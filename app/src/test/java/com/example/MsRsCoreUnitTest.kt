@@ -50,6 +50,52 @@ class MsRsCoreUnitTest {
     }
 
     @Test
+    fun `linear and quadratic equations solve with khata steps`() {
+        val linEn = MathSolverEngine.solve("2x + 5 = 15", useBanglaDigits = false, language = AppLanguage.ENGLISH)
+        assertTrue(linEn is MathSolveResult.Success)
+        assertEquals("x = 5", (linEn as MathSolveResult.Success).answerText)
+
+        val linBn = MathSolverEngine.solve("২x + ৫ = ১৫", useBanglaDigits = true, language = AppLanguage.BANGLA)
+        assertTrue(linBn is MathSolveResult.Success)
+        assertEquals("x = ৫", (linBn as MathSolveResult.Success).answerText)
+
+        val quad = MathSolverEngine.solve("x^2 - 5x + 6 = 0", useBanglaDigits = false, language = AppLanguage.ENGLISH)
+        assertTrue(quad is MathSolveResult.Success)
+        assertEquals("x = 3, 2", (quad as MathSolveResult.Success).answerText)
+    }
+
+    @Test
+    fun `fractions percentages scientific and lcm gcd avg solve accurately`() {
+        val frac = MathSolverEngine.solve("1/2 + 3/4", useBanglaDigits = false, language = AppLanguage.ENGLISH)
+        assertTrue(frac is MathSolveResult.Success)
+        assertEquals("5/4 (1.25)", (frac as MathSolveResult.Success).answerText)
+
+        val pctBn = MathSolverEngine.solve("২০০ এর ১৫%", useBanglaDigits = true, language = AppLanguage.BANGLA)
+        assertTrue(pctBn is MathSolveResult.Success)
+        assertEquals("৩০", (pctBn as MathSolveResult.Success).answerText)
+
+        val pctAdd = MathSolverEngine.solve("500 + 10%", useBanglaDigits = false, language = AppLanguage.ENGLISH)
+        assertTrue(pctAdd is MathSolveResult.Success)
+        assertEquals("550", (pctAdd as MathSolveResult.Success).answerText)
+
+        val sci = MathSolverEngine.solve("√144 + 5² - 3!", useBanglaDigits = false, language = AppLanguage.ENGLISH)
+        assertTrue(sci is MathSolveResult.Success)
+        assertEquals("31", (sci as MathSolveResult.Success).answerText)
+
+        val lcm = MathSolverEngine.solve("লসাগু 12, 18, 24", useBanglaDigits = false, language = AppLanguage.BANGLA)
+        assertTrue(lcm is MathSolveResult.Success)
+        assertEquals("72", (lcm as MathSolveResult.Success).answerText)
+
+        val gcd = MathSolverEngine.solve("GCD 24, 36", useBanglaDigits = false, language = AppLanguage.ENGLISH)
+        assertTrue(gcd is MathSolveResult.Success)
+        assertEquals("12", (gcd as MathSolveResult.Success).answerText)
+
+        val avg = MathSolverEngine.solve("AVG 10, 20, 30", useBanglaDigits = false, language = AppLanguage.ENGLISH)
+        assertTrue(avg is MathSolveResult.Success)
+        assertEquals("20", (avg as MathSolveResult.Success).answerText)
+    }
+
+    @Test
     fun `result calculator computes gpa pass and fail rule`() {
         val passing = List(8) { idx ->
             SubjectMark(name = "Sub $idx", fullMarks = 100, passMark = 33, obtainedMarks = 85.0)

@@ -14,7 +14,6 @@ enum class MathLayoutType {
 
 @Serializable
 enum class MathSourceType {
-    CAMERA,
     CALCULATOR
 }
 

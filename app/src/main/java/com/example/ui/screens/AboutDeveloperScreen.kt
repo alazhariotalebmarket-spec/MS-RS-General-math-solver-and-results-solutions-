@@ -3,7 +3,6 @@ package com.example.ui.screens
 import android.content.Intent
 import android.net.Uri
 import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -19,34 +18,23 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.Chat
 import androidx.compose.material.icons.filled.Call
-import androidx.compose.material.icons.filled.Chat
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.Code
 import androidx.compose.material.icons.filled.Download
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Email
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Phone
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
-import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
@@ -57,7 +45,6 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import com.example.core.AppSettings
 import com.example.core.LocalStrings
 import com.example.ui.components.IslamicGeometricBackdrop
 import com.example.ui.components.MsRsLogoBadge
@@ -66,18 +53,12 @@ import com.example.ui.theme.LocalMsRsColors
 
 @Composable
 fun AboutDeveloperScreen(
-    settings: AppSettings,
-    onUpdateGitHubUrl: (String) -> Unit,
     onOpenApkDownload: () -> Unit,
-    onOpenGitHubDownload: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val ctx = LocalContext.current
     val strings = LocalStrings.current
     val ext = LocalMsRsColors.current
-
-    var showEditGitHub by remember { mutableStateOf(false) }
-    var githubUrlDraft by remember(settings.githubProfileUrl) { mutableStateOf(settings.githubProfileUrl) }
 
     Column(
         modifier = modifier
@@ -189,7 +170,7 @@ fun AboutDeveloperScreen(
                                 colors = ButtonDefaults.buttonColors(containerColor = ext.passGreen),
                                 modifier = Modifier.weight(1.1f).testTag("dev_whatsapp_btn")
                             ) {
-                                Icon(Icons.Filled.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
+                                Icon(Icons.AutoMirrored.Filled.Chat, contentDescription = null, modifier = Modifier.size(18.dp))
                                 Spacer(Modifier.width(4.dp))
                                 Text(strings.whatsappBtn, maxLines = 1)
                             }
@@ -216,102 +197,19 @@ fun AboutDeveloperScreen(
                 }
             }
 
-            // Developer GitHub Link Card
+            // Offline APK Download Button
             item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(18.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
+                Button(
+                    onClick = onOpenApkDownload,
+                    modifier = Modifier.fillMaxWidth().testTag("about_apk_download_btn"),
+                    colors = ButtonDefaults.buttonColors(containerColor = ext.goldContainer, contentColor = ext.onGoldContainer)
                 ) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable {
-                                runCatching {
-                                    ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(settings.githubProfileUrl)))
-                                }
-                            }
-                            .padding(14.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Icon(Icons.Filled.Code, contentDescription = null, tint = ext.solverBlueStart)
-                        Spacer(Modifier.width(12.dp))
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(strings.developerGithubLabel, style = MaterialTheme.typography.labelMedium, color = MaterialTheme.colorScheme.onSurfaceVariant)
-                            Text(
-                                text = settings.githubProfileUrl,
-                                style = MaterialTheme.typography.bodyMedium,
-                                fontWeight = FontWeight.SemiBold,
-                                color = ext.solverBlueStart
-                            )
-                        }
-                        IconButton(
-                            onClick = {
-                                githubUrlDraft = settings.githubProfileUrl
-                                showEditGitHub = true
-                            },
-                            modifier = Modifier.testTag("edit_dev_github_btn")
-                        ) {
-                            Icon(Icons.Filled.Edit, contentDescription = strings.editGithubLink)
-                        }
-                    }
-                }
-            }
-
-            // APK Download + GitHub Download Buttons
-            item {
-                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    Button(
-                        onClick = onOpenApkDownload,
-                        modifier = Modifier.fillMaxWidth().testTag("about_apk_download_btn"),
-                        colors = ButtonDefaults.buttonColors(containerColor = ext.goldContainer, contentColor = ext.onGoldContainer)
-                    ) {
-                        Icon(Icons.Filled.Download, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(strings.apkDownload, fontWeight = FontWeight.Bold)
-                    }
-
-                    Button(
-                        onClick = onOpenGitHubDownload,
-                        modifier = Modifier.fillMaxWidth().testTag("about_github_download_btn"),
-                        colors = ButtonDefaults.buttonColors(containerColor = ext.solverBlueStart)
-                    ) {
-                        Icon(Icons.Filled.CloudDownload, contentDescription = null)
-                        Spacer(Modifier.width(8.dp))
-                        Text(strings.githubDownloadUpdate, fontWeight = FontWeight.Bold)
-                    }
+                    Icon(Icons.Filled.Download, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(strings.apkDownload, fontWeight = FontWeight.Bold)
                 }
             }
         }
-    }
-
-    if (showEditGitHub) {
-        AlertDialog(
-            onDismissRequest = { showEditGitHub = false },
-            title = { Text(strings.editGithubLink) },
-            text = {
-                OutlinedTextField(
-                    value = githubUrlDraft,
-                    onValueChange = { githubUrlDraft = it },
-                    label = { Text("GitHub URL") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth()
-                )
-            },
-            confirmButton = {
-                Button(onClick = {
-                    onUpdateGitHubUrl(githubUrlDraft)
-                    showEditGitHub = false
-                }) {
-                    Text(strings.saveSettings)
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { showEditGitHub = false }) {
-                    Text(strings.cancel)
-                }
-            }
-        )
     }
 }
 

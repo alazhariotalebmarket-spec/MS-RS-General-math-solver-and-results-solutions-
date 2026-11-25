@@ -26,7 +26,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Download
@@ -85,7 +84,6 @@ fun HomeScreen(
     recentHistory: List<RecentHistoryItem>,
     onSearchQueryChange: (String) -> Unit,
     onToggleLanguage: () -> Unit,
-    onOpenCameraSolver: () -> Unit,
     onOpenCalculatorSolver: () -> Unit,
     onOpenResultsList: () -> Unit,
     onOpenNewResult: () -> Unit,
@@ -267,7 +265,7 @@ fun HomeScreen(
                 ) {
                     // 1. MATH SOLVER CARD (Blue + White)
                     AnimatedScaleCard(
-                        onClick = onOpenCameraSolver,
+                        onClick = onOpenCalculatorSolver,
                         containerBrush = Brush.linearGradient(
                             listOf(ext.solverBlueStart, ext.solverBlueEnd)
                         ),
@@ -288,7 +286,7 @@ fun HomeScreen(
                                     shape = RoundedCornerShape(50)
                                 ) {
                                     Text(
-                                        text = "০-৯ • 0-9 • + − × ÷",
+                                        text = "০-৯ • 0-9 • + − × ÷ √ x² %",
                                         style = MaterialTheme.typography.labelSmall,
                                         color = Color.White,
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
@@ -320,8 +318,8 @@ fun HomeScreen(
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            imageVector = Icons.Filled.CameraAlt,
-                                            contentDescription = strings.quickCameraSolve,
+                                            imageVector = Icons.Filled.Calculate,
+                                            contentDescription = strings.quickCalculator,
                                             tint = ext.solverBlueStart,
                                             modifier = Modifier.size(26.dp)
                                         )
@@ -334,8 +332,8 @@ fun HomeScreen(
                                 ) {
                                     Box(contentAlignment = Alignment.Center) {
                                         Icon(
-                                            imageVector = Icons.Filled.Calculate,
-                                            contentDescription = strings.quickCalculator,
+                                            imageVector = Icons.Filled.Functions,
+                                            contentDescription = strings.mathSolverTitle,
                                             tint = ext.solverBlueStart,
                                             modifier = Modifier.size(26.dp)
                                         )
@@ -438,19 +436,10 @@ fun HomeScreen(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 QuickActionTile(
-                    icon = Icons.Filled.CameraAlt,
-                    label = strings.quickCameraSolve,
-                    tint = ext.solverBlueStart,
-                    bgColor = ext.solverBlueContainer,
-                    testTag = "quick_camera_btn",
-                    onClick = onOpenCameraSolver,
-                    modifier = Modifier.weight(1f)
-                )
-                QuickActionTile(
                     icon = Icons.Filled.Calculate,
                     label = strings.quickCalculator,
-                    tint = MaterialTheme.colorScheme.primary,
-                    bgColor = MaterialTheme.colorScheme.primaryContainer,
+                    tint = ext.solverBlueStart,
+                    bgColor = ext.solverBlueContainer,
                     testTag = "quick_calculator_btn",
                     onClick = onOpenCalculatorSolver,
                     modifier = Modifier.weight(1f)
@@ -462,6 +451,15 @@ fun HomeScreen(
                     bgColor = ext.goldContainer,
                     testTag = "quick_new_result_btn",
                     onClick = onOpenNewResult,
+                    modifier = Modifier.weight(1f)
+                )
+                QuickActionTile(
+                    icon = Icons.Filled.School,
+                    label = strings.quickAllResults,
+                    tint = MaterialTheme.colorScheme.primary,
+                    bgColor = MaterialTheme.colorScheme.primaryContainer,
+                    testTag = "quick_all_results_btn",
+                    onClick = onOpenResultsList,
                     modifier = Modifier.weight(1f)
                 )
                 QuickActionTile(

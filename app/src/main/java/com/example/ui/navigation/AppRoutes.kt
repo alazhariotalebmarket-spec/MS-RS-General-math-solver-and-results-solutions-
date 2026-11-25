@@ -9,9 +9,6 @@ data object SplashRoute
 data object MainTabsRoute
 
 @Serializable
-data object CameraSolverRoute
-
-@Serializable
 data object CalculatorSolverRoute
 
 @Serializable

@@ -34,7 +34,6 @@ import androidx.compose.material.icons.automirrored.filled.NoteAdd
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.CameraAlt
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
@@ -87,7 +86,6 @@ import com.example.core.LocalStrings
 import com.example.ui.components.ApkDownloadDialog
 import com.example.ui.navigation.BottomTab
 import com.example.ui.navigation.CalculatorSolverRoute
-import com.example.ui.navigation.CameraSolverRoute
 import com.example.ui.navigation.CombinedMarksheetRoute
 import com.example.ui.navigation.MainTabsRoute
 import com.example.ui.navigation.MathSolutionRoute
@@ -99,7 +97,6 @@ import com.example.ui.navigation.StudyToolsRoute
 import com.example.ui.screens.AboutDeveloperScreen
 import com.example.ui.screens.BackupScreen
 import com.example.ui.screens.CalculatorSolverScreen
-import com.example.ui.screens.CameraSolverScreen
 import com.example.ui.screens.CombinedMarksheetScreen
 import com.example.ui.screens.HistoryScreen
 import com.example.ui.screens.HomeScreen
@@ -175,7 +172,6 @@ private fun MsRsAppRoot(viewModel: MsRsViewModel) {
                 homeSearch = homeSearch,
                 offlineSnapshots = offlineSnapshots,
                 gitHubState = gitHubState,
-                onOpenCameraSolver = { navController.navigate(CameraSolverRoute) },
                 onOpenCalculatorSolver = { navController.navigate(CalculatorSolverRoute) },
                 onOpenResultsList = { navController.navigate(ResultListRoute) },
                 onOpenNewResult = { navController.navigate(ResultFormRoute(0L)) },
@@ -185,21 +181,9 @@ private fun MsRsAppRoot(viewModel: MsRsViewModel) {
             )
         }
 
-        composable<CameraSolverRoute> {
-            CameraSolverScreen(
-                onBack = { navController.popBackStack() },
-                onOpenCalculator = { navController.navigate(CalculatorSolverRoute) },
-                onOpenSolution = { id -> navController.navigate(MathSolutionRoute(id)) },
-                onSolveExpression = { raw, useBangla, source, layout, onSolved, onError ->
-                    viewModel.solveAndSaveMath(raw, useBangla, source, layout, onSolved, onError)
-                }
-            )
-        }
-
         composable<CalculatorSolverRoute> {
             CalculatorSolverScreen(
                 onBack = { navController.popBackStack() },
-                onOpenCamera = { navController.navigate(CameraSolverRoute) },
                 onOpenSolution = { id -> navController.navigate(MathSolutionRoute(id)) },
                 onSolveExpression = { raw, useBangla, source, layout, onSolved, onError ->
                     viewModel.solveAndSaveMath(raw, useBangla, source, layout, onSolved, onError)
@@ -310,7 +294,6 @@ private fun MainTabsShell(
     homeSearch: String,
     offlineSnapshots: List<com.example.domain.OfflineBackupEntry>,
     gitHubState: com.example.ui.viewmodel.GitHubUiState,
-    onOpenCameraSolver: () -> Unit,
     onOpenCalculatorSolver: () -> Unit,
     onOpenResultsList: () -> Unit,
     onOpenNewResult: () -> Unit,
@@ -433,7 +416,6 @@ private fun MainTabsShell(
                                     recentHistory = recentHistory,
                                     onSearchQueryChange = viewModel::setHomeSearchQuery,
                                     onToggleLanguage = viewModel::toggleLanguage,
-                                    onOpenCameraSolver = onOpenCameraSolver,
                                     onOpenCalculatorSolver = onOpenCalculatorSolver,
                                     onOpenResultsList = onOpenResultsList,
                                     onOpenNewResult = onOpenNewResult,
@@ -571,16 +553,7 @@ private fun MainTabsShell(
 
                             BottomTab.ABOUT -> {
                                 AboutDeveloperScreen(
-                                    settings = settings,
-                                    onUpdateGitHubUrl = { url ->
-                                        viewModel.updateGitHubSettings(
-                                            settings.githubRepo,
-                                            settings.githubToken,
-                                            url
-                                        )
-                                    },
-                                    onOpenApkDownload = { showApkDialog = true },
-                                    onOpenGitHubDownload = { currentTab = BottomTab.BACKUP }
+                                    onOpenApkDownload = { showApkDialog = true }
                                 )
                             }
                         }
@@ -596,16 +569,6 @@ private fun MainTabsShell(
             title = { Text(strings.addNewTitle, fontWeight = FontWeight.Bold) },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                    CreateOptionTile(
-                        icon = Icons.Filled.CameraAlt,
-                        label = strings.addNewMathCamera,
-                        tint = ext.solverBlueStart,
-                        bg = ext.solverBlueContainer,
-                        onClick = {
-                            showCreateMenu = false
-                            onOpenCameraSolver()
-                        }
-                    )
                     CreateOptionTile(
                         icon = Icons.Filled.Calculate,
                         label = strings.addNewMathCalc,
