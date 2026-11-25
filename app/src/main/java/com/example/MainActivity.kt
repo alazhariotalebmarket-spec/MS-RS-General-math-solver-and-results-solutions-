@@ -1,6 +1,7 @@
 package com.example
 
 import android.os.Bundle
+import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -68,12 +69,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavDestination.Companion.hasRoute
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
@@ -221,6 +224,7 @@ private fun MsRsAppRoot(viewModel: MsRsViewModel) {
 
         composable<ResultFormRoute> { entry ->
             val route = entry.toRoute<ResultFormRoute>()
+            val appCtx = LocalContext.current.applicationContext
             ResultFormScreen(
                 resultId = route.resultId,
                 initialClassName = route.initialClassName,
@@ -234,9 +238,15 @@ private fun MsRsAppRoot(viewModel: MsRsViewModel) {
                 onSave = { id, exam, inst, cls, year, roll, sName, fName, mName, photo, subs, created ->
                     viewModel.saveStudentResult(
                         id, exam, inst, cls, year, roll, sName, fName, mName, photo, subs, created
-                    ) { savedId ->
-                        navController.navigate(ResultMarksheetRoute(savedId)) {
-                            popUpTo(route) { inclusive = true }
+                    ) { _ ->
+                        Toast.makeText(appCtx, "সংরক্ষণ হয়েছে", Toast.LENGTH_SHORT).show()
+                        val cameFromList = navController.previousBackStackEntry?.destination?.hasRoute<ResultListRoute>() == true
+                        if (cameFromList) {
+                            navController.popBackStack()
+                        } else {
+                            navController.navigate(ResultListRoute) {
+                                popUpTo(route) { inclusive = true }
+                            }
                         }
                     }
                 },
