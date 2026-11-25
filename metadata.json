@@ -1,0 +1,6 @@
+{
+  "name": "MS RS",
+  "description": "General Math Solver & Results Solutions — Offline Bangla & English Math Solver, Calculator, Exam Marksheet Generator & Backup app.",
+  "requestFramePermissions": ["CAMERA"],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
