@@ -1,5 +1,9 @@
 package com.example.domain
 
+import com.example.data.CombinedStudentResult
+import com.example.data.CombinedSubjectRow
+import com.example.data.ComputedStudentResult
+import com.example.data.ExamTerm
 import com.example.data.StudentResultEntity
 import com.example.data.SubjectMark
 import kotlinx.serialization.encodeToString
@@ -142,5 +146,163 @@ object ResultCalculator {
         val r = v.roundToInt()
         return if (kotlin.math.abs(v - r) < 1e-6) r.toString()
         else String.format(java.util.Locale.US, "%.1f", v)
+    }
+
+    fun combinedKeyFor(className: String, yearSession: String, rollNumber: Int): String {
+        val cls = className.trim().lowercase()
+        val yr = yearSession.trim().lowercase().ifBlank { "default" }
+        return "$cls|$yr|$rollNumber"
+    }
+
+    fun computeCombinedResults(allComputed: List<ComputedStudentResult>): List<CombinedStudentResult> {
+        val termRecords = allComputed.filter { ExamTerm.classify(it.entity.examName) != null }
+        if (termRecords.isEmpty()) return emptyList()
+
+        val byStudent = termRecords.groupBy {
+            combinedKeyFor(it.entity.className, it.entity.yearSession, it.entity.rollNumber)
+        }
+
+        val rawCombined = byStudent.map { (key, entries) ->
+            val firstTerm = entries
+                .filter { ExamTerm.classify(it.entity.examName) == ExamTerm.FIRST_TERM }
+                .maxByOrNull { it.entity.updatedAt }
+            val secondTerm = entries
+                .filter { ExamTerm.classify(it.entity.examName) == ExamTerm.SECOND_TERM }
+                .maxByOrNull { it.entity.updatedAt }
+            val annual = entries
+                .filter { ExamTerm.classify(it.entity.examName) == ExamTerm.ANNUAL }
+                .maxByOrNull { it.entity.updatedAt }
+
+            val orderedPrefs = listOfNotNull(annual, secondTerm, firstTerm)
+            val primary = orderedPrefs.first()
+            val studentName = orderedPrefs.firstNotNullOfOrNull { it.entity.studentName.takeIf(String::isNotBlank) } ?: primary.entity.studentName
+            val fatherName = orderedPrefs.firstNotNullOfOrNull { it.entity.fatherName.takeIf(String::isNotBlank) } ?: ""
+            val motherName = orderedPrefs.firstNotNullOfOrNull { it.entity.motherName.takeIf(String::isNotBlank) } ?: ""
+            val institutionName = orderedPrefs.firstNotNullOfOrNull { it.entity.institutionName.takeIf(String::isNotBlank) } ?: ""
+            val photoPath = orderedPrefs.firstNotNullOfOrNull { it.entity.photoPath?.takeIf(String::isNotBlank) }
+            val className = primary.entity.className.trim()
+            val yearSession = primary.entity.yearSession.trim()
+
+            // Collect ordered unique subject names across the entered exams
+            val subjectOrder = linkedMapOf<String, String>()
+            listOfNotNull(firstTerm, secondTerm, annual).forEach { exam ->
+                exam.subjects.filter { it.isEnabled && it.name.isNotBlank() }.forEach { sub ->
+                    val norm = sub.name.trim().lowercase()
+                    if (!subjectOrder.containsKey(norm)) {
+                        subjectOrder[norm] = sub.name.trim()
+                    }
+                }
+            }
+
+            fun findSub(exam: ComputedStudentResult?, normName: String): SubjectMark? {
+                return exam?.subjects?.firstOrNull {
+                    it.isEnabled && it.name.trim().lowercase() == normName
+                }
+            }
+
+            val subjectRows = subjectOrder.map { (norm, displayName) ->
+                val s1 = findSub(firstTerm, norm)
+                val s2 = findSub(secondTerm, norm)
+                val s3 = findSub(annual, norm)
+                val combinedFull = (s1?.fullMarks ?: 0) + (s2?.fullMarks ?: 0) + (s3?.fullMarks ?: 0)
+                val combinedPass = (s1?.passMark ?: 0) + (s2?.passMark ?: 0) + (s3?.passMark ?: 0)
+                val combinedObt = (s1?.obtainedMarks ?: 0.0) + (s2?.obtainedMarks ?: 0.0) + (s3?.obtainedMarks ?: 0.0)
+                val g = calculateSubjectGrade(combinedObt, combinedFull, combinedPass)
+                CombinedSubjectRow(
+                    name = displayName,
+                    firstTermObtained = s1?.obtainedMarks,
+                    firstTermFull = s1?.fullMarks,
+                    secondTermObtained = s2?.obtainedMarks,
+                    secondTermFull = s2?.fullMarks,
+                    annualObtained = s3?.obtainedMarks,
+                    annualFull = s3?.fullMarks,
+                    combinedFullMarks = combinedFull,
+                    combinedPassMark = combinedPass,
+                    combinedObtainedMarks = combinedObt,
+                    grade = g.grade,
+                    gpa = g.gpa,
+                    isPassed = g.isPassed
+                )
+            }
+
+            val totalFull = subjectRows.sumOf { it.combinedFullMarks }
+            val totalObt = subjectRows.sumOf { it.combinedObtainedMarks }
+            val pct = if (totalFull > 0) ((totalObt * 100.0) / totalFull * 100.0).roundToInt() / 100.0 else 0.0
+            val allPassed = subjectRows.isNotEmpty() && subjectRows.all { it.isPassed }
+            val avgGpa = if (allPassed) {
+                val raw = subjectRows.sumOf { it.gpa } / subjectRows.size.toDouble()
+                ((raw * 100.0).roundToInt() / 100.0).coerceAtMost(5.0)
+            } else {
+                0.0
+            }
+            val grade = gpaToGrade(avgGpa, allPassed)
+            val examsCount = listOfNotNull(firstTerm, secondTerm, annual).size
+            val latestUpdated = listOfNotNull(firstTerm, secondTerm, annual).maxOf { it.entity.updatedAt }
+
+            CombinedStudentResult(
+                key = key,
+                className = className,
+                yearSession = yearSession,
+                rollNumber = primary.entity.rollNumber,
+                studentName = studentName,
+                fatherName = fatherName,
+                motherName = motherName,
+                institutionName = institutionName,
+                photoPath = photoPath,
+                firstTerm = firstTerm,
+                secondTerm = secondTerm,
+                annual = annual,
+                examsCount = examsCount,
+                subjectRows = subjectRows,
+                totalFullMarks = totalFull,
+                totalObtainedMarks = totalObt,
+                percentage = pct,
+                totalGpa = avgGpa,
+                overallGrade = grade,
+                isPassed = allPassed,
+                meritPosition = null,
+                classPassRate = 0.0,
+                classTotalStudents = 1,
+                updatedAt = latestUpdated
+            )
+        }
+
+        // Compute class-wise independent merit position & pass rate
+        val byClassYear = rawCombined.groupBy {
+            "${it.className.trim().lowercase()}|${it.yearSession.trim().lowercase().ifBlank { "default" }}"
+        }
+        val meritMap = mutableMapOf<String, Int?>()
+        val passRateMap = mutableMapOf<String, Double>()
+        val classSizeMap = mutableMapOf<String, Int>()
+
+        for ((_, classList) in byClassYear) {
+            val total = classList.size
+            val passedList = classList.filter { it.isPassed }.sortedWith(
+                compareByDescending<CombinedStudentResult> { it.totalObtainedMarks }
+                    .thenByDescending { it.totalGpa }
+                    .thenBy { it.rollNumber }
+            )
+            val passRate = if (total > 0) (passedList.size * 100.0) / total else 0.0
+            passedList.forEachIndexed { index, item ->
+                meritMap[item.key] = index + 1
+            }
+            classList.forEach { item ->
+                if (!item.isPassed) meritMap[item.key] = null
+                passRateMap[item.key] = passRate
+                classSizeMap[item.key] = total
+            }
+        }
+
+        return rawCombined.map { item ->
+            item.copy(
+                meritPosition = meritMap[item.key],
+                classPassRate = passRateMap[item.key] ?: 0.0,
+                classTotalStudents = classSizeMap[item.key] ?: 1
+            )
+        }.sortedWith(
+            compareBy<CombinedStudentResult> { it.className.lowercase() }
+                .thenBy { it.meritPosition ?: Int.MAX_VALUE }
+                .thenBy { it.rollNumber }
+        )
     }
 }

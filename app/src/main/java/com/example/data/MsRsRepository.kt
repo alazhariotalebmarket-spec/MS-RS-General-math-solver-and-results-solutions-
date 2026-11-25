@@ -1,5 +1,6 @@
 package com.example.data
 
+import com.example.domain.ResultCalculator
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.serialization.json.Json
@@ -14,6 +15,10 @@ class MsRsRepository(private val dao: MsRsDao) {
         computeGroupMetrics(list)
     }
 
+    val allCombinedResults: Flow<List<CombinedStudentResult>> = allComputedResults.map { computed ->
+        ResultCalculator.computeCombinedResults(computed)
+    }
+
     suspend fun getMathById(id: Long): MathHistoryEntity? = dao.getMathById(id)
 
     suspend fun saveMath(item: MathHistoryEntity): Long = dao.insertMath(item)
@@ -23,7 +28,21 @@ class MsRsRepository(private val dao: MsRsDao) {
     suspend fun getResultById(id: Long): StudentResultEntity? = dao.getResultById(id)
 
     suspend fun getNextRollNumber(className: String, examName: String): Int {
-        return dao.getMaxRollForClass(className.trim(), examName.trim()) + 1
+        val targetGroup = ExamTerm.groupKey(examName)
+        val classRows = dao.getResultsByClassSnapshot(className.trim())
+        val maxRoll = if (targetGroup.isBlank()) {
+            classRows.maxOfOrNull { it.rollNumber } ?: 0
+        } else {
+            classRows.filter { ExamTerm.groupKey(it.examName) == targetGroup }
+                .maxOfOrNull { it.rollNumber } ?: 0
+        }
+        return maxRoll + 1
+    }
+
+    suspend fun findStudentTemplateByClassAndRoll(className: String, rollNumber: Int): StudentResultEntity? {
+        if (className.isBlank() || rollNumber <= 0) return null
+        return dao.getResultsByClassSnapshot(className.trim())
+            .firstOrNull { it.rollNumber == rollNumber }
     }
 
     suspend fun saveResult(result: StudentResultEntity): Long {
@@ -66,7 +85,7 @@ class MsRsRepository(private val dao: MsRsDao) {
 
     private fun computeGroupMetrics(list: List<StudentResultEntity>): List<ComputedStudentResult> {
         val grouped = list.groupBy {
-            "${it.examName.trim().lowercase()}|${it.className.trim().lowercase()}"
+            "${ExamTerm.groupKey(it.examName)}|${it.className.trim().lowercase()}|${it.yearSession.trim().lowercase().ifBlank { "default" }}"
         }
         val meritMap = mutableMapOf<Long, Int?>()
         val passRateMap = mutableMapOf<Long, Double>()

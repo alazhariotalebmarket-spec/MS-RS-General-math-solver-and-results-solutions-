@@ -25,6 +25,7 @@ import com.example.R
 import com.example.core.AppLanguage
 import com.example.core.AppStrings
 import com.example.core.DigitHelper
+import com.example.data.CombinedStudentResult
 import com.example.data.ComputedStudentResult
 import com.example.data.MathHistoryEntity
 import kotlinx.coroutines.Dispatchers
@@ -128,9 +129,13 @@ object PdfAndImageExporter {
                 textAlign = Paint.Align.CENTER
             }
             val firstInst = sorted.firstOrNull()?.entity?.institutionName?.ifBlank { "MS RS" } ?: "MS RS"
-            val firstExam = sorted.firstOrNull()?.entity?.examName ?: strings.resultListTitle
+            val distinctClasses = sorted.map { it.entity.className }.distinct()
+            val classText = if (distinctClasses.size == 1) distinctClasses.first() else ""
+            val distinctExams = sorted.map { it.entity.examName }.distinct()
+            val examText = if (distinctExams.size == 1) distinctExams.first() else strings.resultListTitle
+            val subText = listOf(classText, examText).filter { it.isNotBlank() }.joinToString(" • ")
             canvas.drawText("$firstInst — ${strings.classMeritPdf}", A4_WIDTH / 2f, 56f, titleP)
-            canvas.drawText(firstExam, A4_WIDTH / 2f, 78f, subP)
+            canvas.drawText(subText, A4_WIDTH / 2f, 78f, subP)
 
             val left = 28f
             val right = A4_WIDTH - 28f
@@ -204,6 +209,428 @@ object PdfAndImageExporter {
             doc.writeTo(out)
         }
         doc.close()
+    }
+
+    suspend fun generateCombinedMarksheetPdfFile(
+        context: Context,
+        combined: CombinedStudentResult,
+        language: AppLanguage,
+        strings: AppStrings
+    ): File = withContext(Dispatchers.IO) {
+        val doc = PdfDocument()
+        val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, 1).create()
+        val page = doc.startPage(pageInfo)
+        drawCombinedMarksheetCanvas(context, page.canvas, A4_WIDTH.toFloat(), A4_HEIGHT.toFloat(), combined, language, strings)
+        doc.finishPage(page)
+
+        val outFile = File(context.cacheDir, "MSRS_Combined_Roll_${combined.rollNumber}.pdf")
+        FileOutputStream(outFile).use { doc.writeTo(it) }
+        doc.close()
+        outFile
+    }
+
+    suspend fun writeCombinedMarksheetPdfToUri(
+        context: Context,
+        uri: Uri,
+        combined: CombinedStudentResult,
+        language: AppLanguage,
+        strings: AppStrings
+    ) = withContext(Dispatchers.IO) {
+        val temp = generateCombinedMarksheetPdfFile(context, combined, language, strings)
+        context.contentResolver.openOutputStream(uri)?.use { out ->
+            FileInputStream(temp).use { inp -> inp.copyTo(out) }
+        }
+    }
+
+    suspend fun writeCombinedMeritListPdfToUri(
+        context: Context,
+        uri: Uri,
+        results: List<CombinedStudentResult>,
+        language: AppLanguage,
+        strings: AppStrings
+    ) = withContext(Dispatchers.IO) {
+        val doc = PdfDocument()
+        val fmt = { s: String -> DigitHelper.format(s, language) }
+        val sorted = results.sortedWith(
+            compareBy<CombinedStudentResult> { it.meritPosition ?: Int.MAX_VALUE }
+                .thenByDescending { it.totalObtainedMarks }
+                .thenBy { it.rollNumber }
+        )
+        val rowsPerPage = 22
+        val chunks = if (sorted.isEmpty()) listOf(emptyList()) else sorted.chunked(rowsPerPage)
+
+        chunks.forEachIndexed { pageIndex, pageRows ->
+            val pageInfo = PdfDocument.PageInfo.Builder(A4_WIDTH, A4_HEIGHT, pageIndex + 1).create()
+            val page = doc.startPage(pageInfo)
+            val canvas = page.canvas
+
+            canvas.drawColor(Color.WHITE)
+            val border = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#0E7A3D")
+                style = Paint.Style.STROKE
+                strokeWidth = 3f
+            }
+            canvas.drawRect(18f, 18f, A4_WIDTH - 18f, A4_HEIGHT - 18f, border)
+
+            val headerBg = Paint().apply { color = Color.parseColor("#0E7A3D") }
+            canvas.drawRect(28f, 28f, A4_WIDTH - 28f, 92f, headerBg)
+
+            val titleP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                typeface = getBengaliTypeface(context, bold = true)
+                textSize = 15f
+                textAlign = Paint.Align.CENTER
+            }
+            val subP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#FFF4D2")
+                typeface = getBengaliTypeface(context, bold = false)
+                textSize = 10.5f
+                textAlign = Paint.Align.CENTER
+            }
+            val firstInst = sorted.firstOrNull()?.institutionName?.ifBlank { "MS RS" } ?: "MS RS"
+            val distinctClasses = sorted.map { it.className }.distinct()
+            val clsSub = if (distinctClasses.size == 1) "${distinctClasses.first()} • " else ""
+            canvas.drawText("$firstInst — ${strings.combinedMeritPdf}", A4_WIDTH / 2f, 56f, titleP)
+            canvas.drawText("$clsSub${strings.combinedResultTitle}", A4_WIDTH / 2f, 78f, subP)
+
+            val left = 24f
+            val right = A4_WIDTH - 24f
+            val w = right - left
+            // Columns: Merit | Roll | Name | 1st | 2nd | Annual | Total | GPA | Status
+            val cols = floatArrayOf(
+                left,
+                left + w * 0.08f,
+                left + w * 0.16f,
+                left + w * 0.42f,
+                left + w * 0.52f,
+                left + w * 0.62f,
+                left + w * 0.72f,
+                left + w * 0.83f,
+                left + w * 0.91f,
+                right
+            )
+
+            var curY = 106f
+            val rowH = 26f
+            canvas.drawRect(left, curY, right, curY + rowH, headerBg)
+            val thP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.WHITE
+                typeface = getBengaliTypeface(context, bold = true)
+                textSize = 9f
+                textAlign = Paint.Align.CENTER
+            }
+            canvas.drawText("#", (cols[0] + cols[1]) / 2f, curY + 17f, thP)
+            canvas.drawText(strings.rollNumberLabel, (cols[1] + cols[2]) / 2f, curY + 17f, thP)
+            canvas.drawText(strings.studentNameLabel, (cols[2] + cols[3]) / 2f, curY + 17f, thP)
+            canvas.drawText(strings.firstTermShort, (cols[3] + cols[4]) / 2f, curY + 17f, thP)
+            canvas.drawText(strings.secondTermShort, (cols[4] + cols[5]) / 2f, curY + 17f, thP)
+            canvas.drawText(strings.annualTermShort, (cols[5] + cols[6]) / 2f, curY + 17f, thP)
+            canvas.drawText(strings.totalCombinedCol, (cols[6] + cols[7]) / 2f, curY + 17f, thP)
+            canvas.drawText(strings.gpaLabel, (cols[7] + cols[8]) / 2f, curY + 17f, thP)
+            canvas.drawText(strings.statusLabel, (cols[8] + cols[9]) / 2f, curY + 17f, thP)
+            curY += rowH
+
+            val cellBorder = Paint().apply {
+                color = Color.parseColor("#C5DDD0")
+                style = Paint.Style.STROKE
+                strokeWidth = 0.8f
+            }
+            val cellP = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#112219")
+                typeface = getBengaliTypeface(context, bold = false)
+                textSize = 9f
+                textAlign = Paint.Align.CENTER
+            }
+            val nameP = Paint(cellP).apply { textAlign = Paint.Align.LEFT }
+
+            pageRows.forEach { item ->
+                canvas.drawRect(left, curY, right, curY + rowH, cellBorder)
+                val posTxt = item.meritPosition?.let { fmt("#$it") } ?: "-"
+                val t1 = item.firstTerm?.let { fmt(ResultCalculator.formatMarks(it.entity.totalObtainedMarks)) } ?: "-"
+                val t2 = item.secondTerm?.let { fmt(ResultCalculator.formatMarks(it.entity.totalObtainedMarks)) } ?: "-"
+                val t3 = item.annual?.let { fmt(ResultCalculator.formatMarks(it.entity.totalObtainedMarks)) } ?: "-"
+                canvas.drawText(posTxt, (cols[0] + cols[1]) / 2f, curY + 17f, cellP)
+                canvas.drawText(fmt(item.rollNumber.toString()), (cols[1] + cols[2]) / 2f, curY + 17f, cellP)
+                canvas.drawText(item.studentName.take(18), cols[2] + 4f, curY + 17f, nameP)
+                canvas.drawText(t1, (cols[3] + cols[4]) / 2f, curY + 17f, cellP)
+                canvas.drawText(t2, (cols[4] + cols[5]) / 2f, curY + 17f, cellP)
+                canvas.drawText(t3, (cols[5] + cols[6]) / 2f, curY + 17f, cellP)
+                canvas.drawText(
+                    "${fmt(ResultCalculator.formatMarks(item.totalObtainedMarks))}/${fmt(item.totalFullMarks.toString())}",
+                    (cols[6] + cols[7]) / 2f,
+                    curY + 17f,
+                    cellP
+                )
+                canvas.drawText(fmt(String.format(java.util.Locale.US, "%.2f", item.totalGpa)), (cols[7] + cols[8]) / 2f, curY + 17f, cellP)
+                val stP = Paint(cellP).apply {
+                    color = if (item.isPassed) Color.parseColor("#0E7A3D") else Color.parseColor("#C62828")
+                    typeface = getBengaliTypeface(context, bold = true)
+                }
+                canvas.drawText(if (item.isPassed) strings.passed else strings.failed, (cols[8] + cols[9]) / 2f, curY + 17f, stP)
+                curY += rowH
+            }
+
+            doc.finishPage(page)
+        }
+
+        context.contentResolver.openOutputStream(uri)?.use { out ->
+            doc.writeTo(out)
+        }
+        doc.close()
+    }
+
+    private fun drawCombinedMarksheetCanvas(
+        context: Context,
+        canvas: Canvas,
+        width: Float,
+        height: Float,
+        combined: CombinedStudentResult,
+        language: AppLanguage,
+        strings: AppStrings
+    ) {
+        val fmt = { s: String -> DigitHelper.format(s, language) }
+
+        val bgPaint = Paint().apply { color = Color.WHITE }
+        canvas.drawRect(0f, 0f, width, height, bgPaint)
+
+        val outerBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#0E7A3D")
+            style = Paint.Style.STROKE
+            strokeWidth = 4f
+        }
+        val innerBorder = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#D4AF37")
+            style = Paint.Style.STROKE
+            strokeWidth = 1.6f
+        }
+        canvas.drawRect(18f, 18f, width - 18f, height - 18f, outerBorder)
+        canvas.drawRect(25f, 25f, width - 25f, height - 25f, innerBorder)
+
+        val headerPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#0E7A3D")
+        }
+        canvas.drawRoundRect(RectF(34f, 34f, width - 34f, 124f), 10f, 10f, headerPaint)
+
+        val logoBmp = BitmapFactory.decodeResource(context.resources, R.drawable.img_msrs_logo)
+        if (logoBmp != null) {
+            val destLogo = RectF(46f, 44f, 114f, 112f)
+            canvas.drawBitmap(logoBmp, null, destLogo, null)
+        }
+
+        val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            typeface = getBengaliTypeface(context, bold = true)
+            textSize = 16.5f
+            textAlign = Paint.Align.CENTER
+        }
+        val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#FFF4D2")
+            typeface = getBengaliTypeface(context, bold = false)
+            textSize = 11f
+            textAlign = Paint.Align.CENTER
+        }
+        val instName = combined.institutionName.ifBlank { "MS RS Educational Institution" }
+        canvas.drawText(instName, width / 2f + 16f, 64f, titlePaint)
+        canvas.drawText("${combined.combinedHeaderSubtitle(strings)} • ${fmt(combined.yearSession)}", width / 2f + 16f, 86f, subPaint)
+
+        val badgePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#D4AF37")
+            typeface = getBengaliTypeface(context, bold = true)
+            textSize = 11f
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText(strings.combinedMarksheetTitle, width / 2f + 16f, 108f, badgePaint)
+
+        val infoBox = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#F4FAF6")
+        }
+        val infoStroke = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#C5DDD0")
+            style = Paint.Style.STROKE
+            strokeWidth = 1f
+        }
+        canvas.drawRoundRect(RectF(34f, 134f, width - 34f, 224f), 8f, 8f, infoBox)
+        canvas.drawRoundRect(RectF(34f, 134f, width - 34f, 224f), 8f, 8f, infoStroke)
+
+        val labelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#112219")
+            typeface = getBengaliTypeface(context, bold = false)
+            textSize = 10.5f
+        }
+        val boldLabelPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#085C2D")
+            typeface = getBengaliTypeface(context, bold = true)
+            textSize = 11.5f
+        }
+
+        canvas.drawText("${strings.studentNameLabel}: ${combined.studentName}", 46f, 154f, boldLabelPaint)
+        canvas.drawText("${strings.fatherNameLabel}: ${combined.fatherName.ifBlank { "-" }}", 46f, 173f, labelPaint)
+        canvas.drawText("${strings.motherNameLabel}: ${combined.motherName.ifBlank { "-" }}", 46f, 192f, labelPaint)
+        val meritStr = combined.meritPosition?.let { fmt("#$it") } ?: "-"
+        canvas.drawText(
+            "${strings.classNameLabel}: ${combined.className}   |   ${strings.rollNumberLabel}: ${fmt(combined.rollNumber.toString())}   |   ${strings.positionMerit}: $meritStr",
+            46f,
+            212f,
+            labelPaint
+        )
+
+        if (!combined.photoPath.isNullOrBlank()) {
+            val f = File(combined.photoPath)
+            if (f.exists()) {
+                val pBmp = BitmapFactory.decodeFile(f.absolutePath)
+                if (pBmp != null) {
+                    val photoRect = RectF(width - 110f, 140f, width - 42f, 218f)
+                    canvas.drawBitmap(pBmp, null, photoRect, null)
+                    canvas.drawRect(photoRect, infoStroke)
+                }
+            }
+        }
+
+        // Combined Subjects Table: Subject | 1st | 2nd | Annual | Total | Grade | GPA
+        val tableTop = 238f
+        val rowHeight = 27f
+        val leftX = 34f
+        val rightX = width - 34f
+        val tableW = rightX - leftX
+        val cols = floatArrayOf(
+            leftX,
+            leftX + tableW * 0.30f,
+            leftX + tableW * 0.42f,
+            leftX + tableW * 0.54f,
+            leftX + tableW * 0.66f,
+            leftX + tableW * 0.80f,
+            leftX + tableW * 0.90f,
+            rightX
+        )
+
+        val tableHeaderPaint = Paint().apply { color = Color.parseColor("#0E7A3D") }
+        canvas.drawRect(leftX, tableTop, rightX, tableTop + rowHeight, tableHeaderPaint)
+
+        val thPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.WHITE
+            typeface = getBengaliTypeface(context, bold = true)
+            textSize = 9.5f
+        }
+        val thCenter = Paint(thPaint).apply { textAlign = Paint.Align.CENTER }
+
+        canvas.drawText(strings.subjectNameLabel, cols[0] + 6f, tableTop + 17f, thPaint)
+        canvas.drawText(strings.firstTermShort, (cols[1] + cols[2]) / 2f, tableTop + 17f, thCenter)
+        canvas.drawText(strings.secondTermShort, (cols[2] + cols[3]) / 2f, tableTop + 17f, thCenter)
+        canvas.drawText(strings.annualTermShort, (cols[3] + cols[4]) / 2f, tableTop + 17f, thCenter)
+        canvas.drawText(strings.totalCombinedCol, (cols[4] + cols[5]) / 2f, tableTop + 17f, thCenter)
+        canvas.drawText(strings.gradeLabel, (cols[5] + cols[6]) / 2f, tableTop + 17f, thCenter)
+        canvas.drawText(strings.gpaLabel, (cols[6] + cols[7]) / 2f, tableTop + 17f, thCenter)
+
+        val cellBorder = Paint().apply {
+            color = Color.parseColor("#C5DDD0")
+            style = Paint.Style.STROKE
+            strokeWidth = 0.8f
+        }
+        val cellText = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#112219")
+            typeface = getBengaliTypeface(context, bold = false)
+            textSize = 9.8f
+        }
+        val cellCenter = Paint(cellText).apply { textAlign = Paint.Align.CENTER }
+        val altRowPaint = Paint().apply { color = Color.parseColor("#F8FCFA") }
+
+        var curY = tableTop + rowHeight
+        combined.subjectRows.forEachIndexed { idx, row ->
+            if (curY > height - 210f) return@forEachIndexed
+            if (idx % 2 == 1) {
+                canvas.drawRect(leftX, curY, rightX, curY + rowHeight, altRowPaint)
+            }
+            canvas.drawRect(leftX, curY, rightX, curY + rowHeight, cellBorder)
+            canvas.drawText(row.name.take(20), cols[0] + 6f, curY + 17f, cellText)
+            canvas.drawText(
+                row.firstTermObtained?.let { fmt(ResultCalculator.formatMarks(it)) } ?: "-",
+                (cols[1] + cols[2]) / 2f,
+                curY + 17f,
+                cellCenter
+            )
+            canvas.drawText(
+                row.secondTermObtained?.let { fmt(ResultCalculator.formatMarks(it)) } ?: "-",
+                (cols[2] + cols[3]) / 2f,
+                curY + 17f,
+                cellCenter
+            )
+            canvas.drawText(
+                row.annualObtained?.let { fmt(ResultCalculator.formatMarks(it)) } ?: "-",
+                (cols[3] + cols[4]) / 2f,
+                curY + 17f,
+                cellCenter
+            )
+            canvas.drawText(
+                "${fmt(ResultCalculator.formatMarks(row.combinedObtainedMarks))}/${fmt(row.combinedFullMarks.toString())}",
+                (cols[4] + cols[5]) / 2f,
+                curY + 17f,
+                cellCenter
+            )
+            val gPaint = Paint(cellCenter).apply {
+                color = if (row.isPassed) Color.parseColor("#0E7A3D") else Color.parseColor("#C62828")
+                typeface = getBengaliTypeface(context, bold = true)
+            }
+            canvas.drawText(row.grade, (cols[5] + cols[6]) / 2f, curY + 17f, gPaint)
+            canvas.drawText(fmt(String.format(java.util.Locale.US, "%.2f", row.gpa)), (cols[6] + cols[7]) / 2f, curY + 17f, cellCenter)
+            curY += rowHeight
+        }
+
+        for (c in cols) {
+            canvas.drawLine(c, tableTop, c, curY, cellBorder)
+        }
+
+        val sumTop = curY + 16f
+        val sumRect = RectF(leftX, sumTop, rightX, sumTop + 98f)
+        canvas.drawRoundRect(sumRect, 8f, 8f, infoBox)
+        canvas.drawRoundRect(sumRect, 8f, 8f, infoStroke)
+
+        canvas.drawText(
+            "${strings.totalMarks}: ${fmt(combined.totalFullMarks.toString())}     |     ${strings.obtainedTotal}: ${fmt(ResultCalculator.formatMarks(combined.totalObtainedMarks))}     |     ${strings.percentage}: ${fmt(String.format(java.util.Locale.US, "%.1f%%", combined.percentage))}",
+            leftX + 14f,
+            sumTop + 26f,
+            boldLabelPaint
+        )
+        canvas.drawText(
+            "${strings.gpaLabel}: ${fmt(String.format(java.util.Locale.US, "%.2f", combined.totalGpa))}     |     ${strings.gradeLabel}: ${combined.overallGrade}     |     ${strings.classPassRate}: ${fmt(String.format(java.util.Locale.US, "%.1f%%", combined.classPassRate))}",
+            leftX + 14f,
+            sumTop + 52f,
+            labelPaint
+        )
+        val statusPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = if (combined.isPassed) Color.parseColor("#0E7A3D") else Color.parseColor("#C62828")
+            typeface = getBengaliTypeface(context, bold = true)
+            textSize = 13f
+        }
+        val statusText = if (combined.isPassed) strings.passed else strings.failed
+        canvas.drawText("${strings.statusLabel}: $statusText (${fmt(combined.examsCount.toString())}/${fmt("3")} ${strings.examsIncludedLabel})", leftX + 14f, sumTop + 80f, statusPaint)
+
+        val footY = height - 62f
+        val linePaint = Paint().apply {
+            color = Color.parseColor("#112219")
+            strokeWidth = 1f
+        }
+        canvas.drawLine(46f, footY, 195f, footY, linePaint)
+        canvas.drawText(strings.teacherSignature, 46f, footY + 16f, labelPaint)
+
+        canvas.drawLine(width - 195f, footY, width - 46f, footY, linePaint)
+        canvas.drawText(
+            "${strings.dateLabel}: ${DigitHelper.formatShortDate(combined.updatedAt, language)}",
+            width - 195f,
+            footY + 16f,
+            labelPaint
+        )
+
+        val brandFoot = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+            color = Color.parseColor("#4B6356")
+            typeface = getBengaliTypeface(context, bold = false)
+            textSize = 9f
+            textAlign = Paint.Align.CENTER
+        }
+        canvas.drawText("MS RS - General Math Solver & Results Solutions", width / 2f, height - 28f, brandFoot)
+    }
+
+    private fun CombinedStudentResult.combinedHeaderSubtitle(strings: AppStrings): String {
+        return "${strings.firstTermShort} + ${strings.secondTermShort} + ${strings.annualTermShort}"
     }
 
     private fun drawMarksheetCanvas(

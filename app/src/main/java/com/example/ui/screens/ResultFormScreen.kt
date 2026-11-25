@@ -87,10 +87,13 @@ private data class SubjectFormRow(
 @Composable
 fun ResultFormScreen(
     resultId: Long,
+    initialClassName: String = "",
+    initialExamName: String = "",
     defaultInstitution: String,
     defaultExamName: String,
     loadResult: suspend (Long) -> StudentResultEntity?,
     getNextRoll: suspend (String, String) -> Int,
+    findStudentTemplate: suspend (String, Int) -> StudentResultEntity?,
     copyPhoto: (android.net.Uri) -> String?,
     onSave: (
         id: Long,
@@ -116,9 +119,15 @@ fun ResultFormScreen(
     val json = remember { Json { ignoreUnknownKeys = true } }
     val fmt = { s: String -> DigitHelper.format(s, lang) }
 
-    var examName by remember { mutableStateOf(defaultExamName.ifBlank { strings.examPresets.first() }) }
+    var examName by remember {
+        mutableStateOf(
+            initialExamName.ifBlank { defaultExamName.ifBlank { strings.examPresets.first() } }
+        )
+    }
     var institutionName by remember { mutableStateOf(defaultInstitution) }
-    var className by remember { mutableStateOf(strings.classPresets[4]) } // Class 1
+    var className by remember {
+        mutableStateOf(initialClassName.ifBlank { strings.classPresets[4] })
+    }
     var yearSession by remember { mutableStateOf("2026") }
     var rollText by remember { mutableStateOf("1") }
     var rollManuallyEdited by remember { mutableStateOf(false) }
@@ -127,6 +136,7 @@ fun ResultFormScreen(
     var motherName by remember { mutableStateOf("") }
     var photoPath by remember { mutableStateOf<String?>(null) }
     var existingCreatedAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
+    var matchingTemplate by remember { mutableStateOf<StudentResultEntity?>(null) }
 
     val subjectRows = remember {
         mutableStateListOf<SubjectFormRow>().apply {
@@ -178,6 +188,20 @@ fun ResultFormScreen(
         if (resultId == 0L && !rollManuallyEdited && className.isNotBlank()) {
             val nextRoll = getNextRoll(className, examName)
             rollText = nextRoll.toString()
+        }
+    }
+
+    // Look up matching student from another exam of the same class & roll for 1-tap autofill
+    LaunchedEffect(className, rollText, resultId) {
+        if (resultId == 0L && className.isNotBlank()) {
+            val parsedRoll = DigitHelper.toEnglishDigits(rollText).toIntOrNull() ?: 0
+            matchingTemplate = if (parsedRoll > 0) {
+                findStudentTemplate(className, parsedRoll)
+            } else {
+                null
+            }
+        } else {
+            matchingTemplate = null
         }
     }
 
@@ -430,6 +454,42 @@ fun ResultFormScreen(
                                 }
                             }
                         }
+                    }
+
+                    val template = matchingTemplate
+                    if (resultId == 0L && template != null && template.studentName != studentName) {
+                        FilterChip(
+                            selected = false,
+                            onClick = {
+                                if (institutionName.isBlank()) institutionName = template.institutionName
+                                studentName = template.studentName
+                                fatherName = template.fatherName
+                                motherName = template.motherName
+                                if (photoPath == null) photoPath = template.photoPath
+                                val tmplSubs = runCatching {
+                                    json.decodeFromString<List<SubjectMark>>(template.subjectsJson)
+                                }.getOrDefault(emptyList())
+                                if (tmplSubs.isNotEmpty()) {
+                                    subjectRows.clear()
+                                    tmplSubs.forEach { s ->
+                                        subjectRows.add(
+                                            SubjectFormRow(
+                                                name = s.name,
+                                                fullMarks = s.fullMarks.toString(),
+                                                passMark = s.passMark.toString(),
+                                                obtainedMarks = "",
+                                                isEnabled = s.isEnabled
+                                            )
+                                        )
+                                    }
+                                    while (subjectRows.size < 8) {
+                                        subjectRows.add(SubjectFormRow("", "100", "33", "", isEnabled = false))
+                                    }
+                                }
+                            },
+                            label = { Text("${strings.fillFromExistingStudent}: ${template.studentName}") },
+                            modifier = Modifier.testTag("autofill_student_chip")
+                        )
                     }
 
                     OutlinedTextField(

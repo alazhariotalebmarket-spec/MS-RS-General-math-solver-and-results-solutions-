@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Assessment
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Person
@@ -67,6 +68,7 @@ import com.example.core.DigitHelper
 import com.example.core.LocalLanguage
 import com.example.core.LocalStrings
 import com.example.data.ComputedStudentResult
+import com.example.data.ExamTerm
 import com.example.domain.PdfAndImageExporter
 import com.example.domain.ResultCalculator
 import com.example.ui.components.MsRsLogoBadge
@@ -81,7 +83,8 @@ fun ResultMarksheetScreen(
     allResults: List<ComputedStudentResult>,
     onBack: () -> Unit,
     onEdit: (Long) -> Unit,
-    onDelete: (Long) -> Unit
+    onDelete: (Long) -> Unit,
+    onOpenCombined: ((String) -> Unit)? = null
 ) {
     val ctx = LocalContext.current
     val strings = LocalStrings.current
@@ -444,6 +447,23 @@ fun ResultMarksheetScreen(
                     Icon(Icons.Filled.Delete, contentDescription = null, modifier = Modifier.size(18.dp))
                     Spacer(Modifier.width(4.dp))
                     Text(strings.delete, maxLines = 1)
+                }
+            }
+
+            if (onOpenCombined != null && ExamTerm.classify(e.examName) != null) {
+                Button(
+                    onClick = {
+                        onOpenCombined(ResultCalculator.combinedKeyFor(e.className, e.yearSession, e.rollNumber))
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ext.goldContainer,
+                        contentColor = ext.onGoldContainer
+                    ),
+                    modifier = Modifier.fillMaxWidth().testTag("marksheet_view_combined_btn")
+                ) {
+                    Icon(Icons.Filled.Assessment, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(Modifier.width(6.dp))
+                    Text(strings.viewCombinedResult, fontWeight = FontWeight.Bold)
                 }
             }
         }

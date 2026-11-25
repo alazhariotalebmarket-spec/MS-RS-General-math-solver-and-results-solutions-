@@ -9,6 +9,7 @@ import com.example.core.AppSettings
 import com.example.core.BanglaStrings
 import com.example.core.EnglishStrings
 import com.example.core.SettingsDataStore
+import com.example.data.CombinedStudentResult
 import com.example.data.ComputedStudentResult
 import com.example.data.MathHistoryEntity
 import com.example.data.MathLayoutType
@@ -61,6 +62,9 @@ class MsRsViewModel(application: Application) : AndroidViewModel(application) {
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val allResults: StateFlow<List<ComputedStudentResult>> = repository.allComputedResults
+        .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
+
+    val allCombinedResults: StateFlow<List<CombinedStudentResult>> = repository.allCombinedResults
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
     val combinedRecentHistory: StateFlow<List<RecentHistoryItem>> = combine(
@@ -152,6 +156,10 @@ class MsRsViewModel(application: Application) : AndroidViewModel(application) {
 
     suspend fun getNextRollNumber(className: String, examName: String): Int {
         return repository.getNextRollNumber(className, examName)
+    }
+
+    suspend fun findStudentTemplateByClassAndRoll(className: String, rollNumber: Int): StudentResultEntity? {
+        return repository.findStudentTemplateByClassAndRoll(className, rollNumber)
     }
 
     fun saveStudentResult(

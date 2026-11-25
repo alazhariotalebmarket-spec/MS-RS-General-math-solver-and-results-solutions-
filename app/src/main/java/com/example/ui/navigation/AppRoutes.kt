@@ -21,10 +21,17 @@ data class MathSolutionRoute(val mathId: Long)
 data object ResultListRoute
 
 @Serializable
-data class ResultFormRoute(val resultId: Long = 0L)
+data class ResultFormRoute(
+    val resultId: Long = 0L,
+    val initialClassName: String = "",
+    val initialExamName: String = ""
+)
 
 @Serializable
 data class ResultMarksheetRoute(val resultId: Long)
+
+@Serializable
+data class CombinedMarksheetRoute(val combinedKey: String)
 
 @Serializable
 data object StudyToolsRoute

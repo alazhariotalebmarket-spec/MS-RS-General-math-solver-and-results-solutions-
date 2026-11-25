@@ -44,6 +44,9 @@ interface MsRsDao {
     @Query("SELECT COALESCE(MAX(rollNumber), 0) FROM student_results WHERE className = :className AND (:examName = '' OR examName = :examName)")
     suspend fun getMaxRollForClass(className: String, examName: String): Int
 
+    @Query("SELECT * FROM student_results WHERE LOWER(TRIM(className)) = LOWER(TRIM(:className)) ORDER BY updatedAt DESC")
+    suspend fun getResultsByClassSnapshot(className: String): List<StudentResultEntity>
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun insertResult(result: StudentResultEntity): Long
 

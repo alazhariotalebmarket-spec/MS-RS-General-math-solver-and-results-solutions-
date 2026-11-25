@@ -88,6 +88,7 @@ import com.example.ui.components.ApkDownloadDialog
 import com.example.ui.navigation.BottomTab
 import com.example.ui.navigation.CalculatorSolverRoute
 import com.example.ui.navigation.CameraSolverRoute
+import com.example.ui.navigation.CombinedMarksheetRoute
 import com.example.ui.navigation.MainTabsRoute
 import com.example.ui.navigation.MathSolutionRoute
 import com.example.ui.navigation.ResultFormRoute
@@ -99,6 +100,7 @@ import com.example.ui.screens.AboutDeveloperScreen
 import com.example.ui.screens.BackupScreen
 import com.example.ui.screens.CalculatorSolverScreen
 import com.example.ui.screens.CameraSolverScreen
+import com.example.ui.screens.CombinedMarksheetScreen
 import com.example.ui.screens.HistoryScreen
 import com.example.ui.screens.HomeScreen
 import com.example.ui.screens.MathSolutionScreen
@@ -139,6 +141,7 @@ private fun MsRsAppRoot(viewModel: MsRsViewModel) {
     val settings by viewModel.settings.collectAsStateWithLifecycle()
     val allMaths by viewModel.allMathHistory.collectAsStateWithLifecycle()
     val allResults by viewModel.allResults.collectAsStateWithLifecycle()
+    val allCombinedResults by viewModel.allCombinedResults.collectAsStateWithLifecycle()
     val recentHistory by viewModel.combinedRecentHistory.collectAsStateWithLifecycle()
     val homeSearch by viewModel.homeSearchQuery.collectAsStateWithLifecycle()
     val gitHubState by viewModel.gitHubState.collectAsStateWithLifecycle()
@@ -216,9 +219,19 @@ private fun MsRsAppRoot(viewModel: MsRsViewModel) {
         composable<ResultListRoute> {
             ResultListScreen(
                 results = allResults,
+                combinedResults = allCombinedResults,
                 onBack = { navController.popBackStack() },
-                onCreateResult = { navController.navigate(ResultFormRoute(0L)) },
-                onOpenMarksheet = { id -> navController.navigate(ResultMarksheetRoute(id)) }
+                onCreateResult = { initClass, initExam ->
+                    navController.navigate(
+                        ResultFormRoute(
+                            resultId = 0L,
+                            initialClassName = initClass,
+                            initialExamName = initExam
+                        )
+                    )
+                },
+                onOpenMarksheet = { id -> navController.navigate(ResultMarksheetRoute(id)) },
+                onOpenCombinedMarksheet = { key -> navController.navigate(CombinedMarksheetRoute(key)) }
             )
         }
 
@@ -226,17 +239,20 @@ private fun MsRsAppRoot(viewModel: MsRsViewModel) {
             val route = entry.toRoute<ResultFormRoute>()
             ResultFormScreen(
                 resultId = route.resultId,
+                initialClassName = route.initialClassName,
+                initialExamName = route.initialExamName,
                 defaultInstitution = settings.defaultInstitution,
                 defaultExamName = settings.defaultExamName,
                 loadResult = { viewModel.getResultById(it) },
                 getNextRoll = { cls, exam -> viewModel.getNextRollNumber(cls, exam) },
+                findStudentTemplate = { cls, roll -> viewModel.findStudentTemplateByClassAndRoll(cls, roll) },
                 copyPhoto = { uri -> viewModel.copyPickedPhotoToInternalStorage(uri) },
                 onSave = { id, exam, inst, cls, year, roll, sName, fName, mName, photo, subs, created ->
                     viewModel.saveStudentResult(
                         id, exam, inst, cls, year, roll, sName, fName, mName, photo, subs, created
                     ) { savedId ->
                         navController.navigate(ResultMarksheetRoute(savedId)) {
-                            popUpTo(ResultFormRoute(route.resultId)) { inclusive = true }
+                            popUpTo(route) { inclusive = true }
                         }
                     }
                 },
@@ -254,6 +270,26 @@ private fun MsRsAppRoot(viewModel: MsRsViewModel) {
                 onDelete = { id ->
                     viewModel.deleteStudentResult(id)
                     navController.popBackStack()
+                },
+                onOpenCombined = { key -> navController.navigate(CombinedMarksheetRoute(key)) }
+            )
+        }
+
+        composable<CombinedMarksheetRoute> { entry ->
+            val route = entry.toRoute<CombinedMarksheetRoute>()
+            CombinedMarksheetScreen(
+                combinedKey = route.combinedKey,
+                allCombinedResults = allCombinedResults,
+                onBack = { navController.popBackStack() },
+                onOpenSingleMarksheet = { id -> navController.navigate(ResultMarksheetRoute(id)) },
+                onAddMissingExam = { cls, exam ->
+                    navController.navigate(
+                        ResultFormRoute(
+                            resultId = 0L,
+                            initialClassName = cls,
+                            initialExamName = exam
+                        )
+                    )
                 }
             )
         }
