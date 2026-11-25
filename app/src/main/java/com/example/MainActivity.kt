@@ -462,7 +462,6 @@ private fun MainTabsShell(
                                     mathCount = mathCount,
                                     resultCount = resultCount,
                                     offlineSnapshots = offlineSnapshots,
-                                    gitHubState = gitHubState,
                                     onSaveOfflineSnapshot = {
                                         viewModel.saveOfflineSnapshot { res ->
                                             scope.launch {
@@ -530,34 +529,7 @@ private fun MainTabsShell(
                                             }
                                         }
                                     },
-                                    onSaveGitHubConfig = viewModel::updateGitHubSettings,
-                                    onCheckGitHubRelease = viewModel::checkGitHubRelease,
-                                    onDownloadGitHubFile = { url, destUri ->
-                                        viewModel.downloadFromGitHubToUri(url, destUri) { res ->
-                                            scope.launch {
-                                                res.onSuccess {
-                                                    snackbarHostState.showSnackbar("Downloaded from GitHub")
-                                                }.onFailure { err ->
-                                                    snackbarHostState.showSnackbar(err.message ?: "Download failed")
-                                                }
-                                            }
-                                        }
-                                    },
-                                    onUploadBackupToGitHub = { repo, token ->
-                                        viewModel.uploadBackupToGitHub(repo, token) { res ->
-                                            scope.launch {
-                                                res.onSuccess { path ->
-                                                    snackbarHostState.showSnackbar("Uploaded: $path")
-                                                }.onFailure { err ->
-                                                    snackbarHostState.showSnackbar(err.message ?: "Upload failed")
-                                                }
-                                            }
-                                        }
-                                    },
-                                    onOpenApkDownload = { showApkDialog = true },
-                                    onShowMessage = { msg ->
-                                        scope.launch { snackbarHostState.showSnackbar(msg) }
-                                    }
+                                    onOpenApkDownload = { showApkDialog = true }
                                 )
                             }
 

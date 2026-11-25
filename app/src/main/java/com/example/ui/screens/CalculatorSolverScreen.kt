@@ -178,6 +178,10 @@ fun CalculatorSolverScreen(
         listOf(
             MathQuickAction(if (isBn) "লসাগু" else "LCM", if (isBn) "লসাগু " else "LCM ", replaceAll = true, isCommand = true),
             MathQuickAction(if (isBn) "গসাগু" else "GCD", if (isBn) "গসাগু " else "GCD ", replaceAll = true, isCommand = true),
+            MathQuickAction(if (isBn) "মৌলিক" else "Prime", if (isBn) "মৌলিক উৎপাদক " else "Prime ", replaceAll = true, isCommand = true),
+            MathQuickAction(if (isBn) "মুনাফা" else "Interest", if (isBn) "মুনাফা P=" else "Interest P=", replaceAll = true, isCommand = true),
+            MathQuickAction(if (isBn) "ক্ষেত্রফল" else "Area", if (isBn) "ক্ষেত্রফল " else "Area ", replaceAll = true, isCommand = true),
+            MathQuickAction(if (isBn) "মধ্যক" else "Median", if (isBn) "মধ্যক " else "Median ", replaceAll = true, isCommand = true),
             MathQuickAction(if (isBn) "গড়" else "AVG", if (isBn) "গড় " else "AVG ", replaceAll = true, isCommand = true),
             MathQuickAction(if (isBn) "এর %" else "% of", if (isBn) " এর " else "% of ", isCommand = true),
             MathQuickAction("x", "x"),
@@ -203,6 +207,11 @@ fun CalculatorSolverScreen(
                 display("1/2 + 3/4"),
                 display("200 এর 15%"),
                 display("লসাগু 12, 18, 24"),
+                display("গসাগু 24, 36, 60"),
+                display("মৌলিক উৎপাদক 60"),
+                display("মুনাফা P=5000 n=3 r=5"),
+                display("ক্ষেত্রফল 12, 8"),
+                display("মধ্যক 12, 15, 10, 18, 20"),
                 display("√144 + 5² - 3!"),
                 display("2 ) 6 (")
             )
@@ -213,6 +222,11 @@ fun CalculatorSolverScreen(
                 display("1/2 + 3/4"),
                 display("15% of 200"),
                 display("LCM 12, 18, 24"),
+                display("GCD 24, 36, 60"),
+                display("Prime 60"),
+                display("Interest P=5000 n=3 r=5"),
+                display("Area 12, 8"),
+                display("Median 12, 15, 10, 18, 20"),
                 display("√144 + 5² - 3!"),
                 display("2 ) 6 (")
             )

@@ -1,6 +1,5 @@
 package com.example.ui.screens
 
-import android.content.Intent
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -20,8 +19,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.CloudDownload
-import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.DeleteOutline
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.FolderZip
@@ -38,13 +35,10 @@ import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
-import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -55,7 +49,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.core.AppSettings
@@ -67,7 +60,6 @@ import com.example.domain.OfflineBackupEntry
 import com.example.domain.PdfAndImageExporter
 import com.example.ui.components.MsRsTopBar
 import com.example.ui.theme.LocalMsRsColors
-import com.example.ui.viewmodel.GitHubUiState
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -78,7 +70,6 @@ fun BackupScreen(
     mathCount: Int,
     resultCount: Int,
     offlineSnapshots: List<OfflineBackupEntry>,
-    gitHubState: GitHubUiState,
     onSaveOfflineSnapshot: () -> Unit,
     onRestoreOfflineSnapshot: (fileName: String, replaceExisting: Boolean) -> Unit,
     onDeleteOfflineSnapshot: (fileName: String) -> Unit,
@@ -86,12 +77,7 @@ fun BackupScreen(
     onRestoreBackup: (Uri, Boolean) -> Unit,
     onExportResultsCsv: (Uri) -> Unit,
     onExportMathCsv: (Uri) -> Unit,
-    onSaveGitHubConfig: (repo: String, token: String, profileUrl: String) -> Unit,
-    onCheckGitHubRelease: (repo: String, token: String) -> Unit,
-    onDownloadGitHubFile: (url: String, destUri: Uri) -> Unit,
-    onUploadBackupToGitHub: (repo: String, token: String) -> Unit,
     onOpenApkDownload: () -> Unit,
-    onShowMessage: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val ctx = LocalContext.current
@@ -100,9 +86,6 @@ fun BackupScreen(
     val ext = LocalMsRsColors.current
     val fmt = { s: String -> DigitHelper.format(s, lang) }
 
-    var repoInput by remember(settings.githubRepo) { mutableStateOf(settings.githubRepo) }
-    var tokenInput by remember(settings.githubToken) { mutableStateOf(settings.githubToken) }
-    var pendingDownloadUrl by remember { mutableStateOf<String?>(null) }
     var replaceOnRestore by remember { mutableStateOf(false) }
 
     val stamp = remember { SimpleDateFormat("yyyyMMdd_HHmm", Locale.US).format(Date()) }
@@ -123,26 +106,12 @@ fun BackupScreen(
         ActivityResultContracts.CreateDocument("text/csv")
     ) { uri -> if (uri != null) onExportMathCsv(uri) }
 
-    val githubZipLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/zip")
-    ) { uri ->
-        val url = pendingDownloadUrl
-        if (uri != null && url != null) onDownloadGitHubFile(url, uri)
-    }
-
-    val githubApkLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/vnd.android.package-archive")
-    ) { uri ->
-        val url = pendingDownloadUrl
-        if (uri != null && url != null) onDownloadGitHubFile(url, uri)
-    }
-
     Column(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
     ) {
-        MsRsTopBar(title = strings.backupCenterTitle)
+        MsRsTopBar(title = "অফলাইন ব্যাকআপ")
 
         LazyColumn(
             modifier = Modifier.fillMaxSize(),
@@ -406,7 +375,7 @@ fun BackupScreen(
                 }
             }
 
-            // 4. Offline APK Download Card
+            // 4. Offline APK Download Button
             item {
                 Button(
                     onClick = onOpenApkDownload,
@@ -417,177 +386,6 @@ fun BackupScreen(
                     Icon(Icons.Filled.Download, contentDescription = null)
                     Spacer(Modifier.width(8.dp))
                     Text(strings.apkDownload, fontWeight = FontWeight.Bold)
-                }
-            }
-
-            // 5. GitHub Download / Update + Cloud Backup Card
-            item {
-                Card(
-                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
-                    shape = RoundedCornerShape(18.dp),
-                    border = androidx.compose.foundation.BorderStroke(1.dp, MaterialTheme.colorScheme.outline)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        Text(
-                            text = strings.githubSectionTitle,
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold,
-                            color = ext.solverBlueStart
-                        )
-
-                        Surface(
-                            color = ext.solverBlueContainer.copy(alpha = 0.65f),
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text(
-                                text = strings.githubGuideText,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = ext.onSolverBlueContainer,
-                                modifier = Modifier.padding(10.dp)
-                            )
-                        }
-
-                        OutlinedTextField(
-                            value = repoInput,
-                            onValueChange = { repoInput = it },
-                            label = { Text(strings.githubRepoLabel) },
-                            placeholder = { Text("https://github.com/username/ms-rs") },
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag("github_repo_input")
-                        )
-
-                        OutlinedTextField(
-                            value = tokenInput,
-                            onValueChange = { tokenInput = it },
-                            label = { Text(strings.githubTokenLabel) },
-                            visualTransformation = PasswordVisualTransformation(),
-                            singleLine = true,
-                            modifier = Modifier.fillMaxWidth().testTag("github_token_input")
-                        )
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            OutlinedButton(
-                                onClick = {
-                                    onSaveGitHubConfig(repoInput, tokenInput, settings.githubProfileUrl)
-                                    onShowMessage("GitHub config saved")
-                                },
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Icon(Icons.Filled.Save, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(strings.saveSettings, maxLines = 1)
-                            }
-                            Button(
-                                onClick = {
-                                    onSaveGitHubConfig(repoInput, tokenInput, settings.githubProfileUrl)
-                                    onCheckGitHubRelease(repoInput, tokenInput)
-                                },
-                                enabled = !gitHubState.isLoading,
-                                colors = ButtonDefaults.buttonColors(containerColor = ext.solverBlueStart),
-                                modifier = Modifier.weight(1.4f).testTag("github_download_update_btn")
-                            ) {
-                                Icon(Icons.Filled.CloudDownload, contentDescription = null, modifier = Modifier.size(18.dp))
-                                Spacer(Modifier.width(4.dp))
-                                Text(strings.githubDownloadUpdate, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                            }
-                        }
-
-                        Button(
-                            onClick = {
-                                onSaveGitHubConfig(repoInput, tokenInput, settings.githubProfileUrl)
-                                onUploadBackupToGitHub(repoInput, tokenInput)
-                            },
-                            enabled = !gitHubState.isLoading,
-                            modifier = Modifier.fillMaxWidth().testTag("github_upload_backup_btn")
-                        ) {
-                            Icon(Icons.Filled.CloudUpload, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
-                            Text(strings.githubUploadBackup)
-                        }
-
-                        if (gitHubState.isLoading) {
-                            if (gitHubState.downloadProgress > 0f) {
-                                LinearProgressIndicator(
-                                    progress = { gitHubState.downloadProgress },
-                                    modifier = Modifier.fillMaxWidth()
-                                )
-                            } else {
-                                LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            }
-                        }
-
-                        gitHubState.errorMessage?.let { err ->
-                            Surface(color = ext.failContainer, shape = RoundedCornerShape(10.dp)) {
-                                Text(
-                                    text = err,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = ext.failRed,
-                                    modifier = Modifier.padding(10.dp)
-                                )
-                            }
-                        }
-
-                        gitHubState.releaseInfo?.let { rel ->
-                            Surface(
-                                color = ext.solverBlueContainer,
-                                shape = RoundedCornerShape(12.dp),
-                                modifier = Modifier.fillMaxWidth()
-                            ) {
-                                Column(
-                                    modifier = Modifier.padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                                ) {
-                                    Text(
-                                        text = "${rel.repo} • ${rel.tagName}",
-                                        style = MaterialTheme.typography.titleSmall,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ext.onSolverBlueContainer
-                                    )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                                    ) {
-                                        if (rel.apkDownloadUrl != null) {
-                                            Button(
-                                                onClick = {
-                                                    pendingDownloadUrl = rel.apkDownloadUrl
-                                                    githubApkLauncher.launch("MS_RS_${rel.tagName}.apk")
-                                                },
-                                                modifier = Modifier.weight(1f)
-                                            ) {
-                                                Text(strings.githubReleaseApk)
-                                            }
-                                        }
-                                        OutlinedButton(
-                                            onClick = {
-                                                pendingDownloadUrl = rel.sourceZipUrl
-                                                githubZipLauncher.launch("MS_RS_${rel.tagName}.zip")
-                                            },
-                                            modifier = Modifier.weight(1f)
-                                        ) {
-                                            Text(strings.githubSourceZip)
-                                        }
-                                    }
-                                    TextButton(
-                                        onClick = {
-                                            runCatching {
-                                                ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(rel.htmlUrl)))
-                                            }
-                                        },
-                                        modifier = Modifier.align(Alignment.End)
-                                    ) {
-                                        Text(strings.openInBrowser)
-                                    }
-                                }
-                            }
-                        }
-                    }
                 }
             }
         }

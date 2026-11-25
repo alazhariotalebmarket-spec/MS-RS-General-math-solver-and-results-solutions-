@@ -80,6 +80,9 @@ object MathSolverEngine {
         // 2. LCM / GCD / Average
         trySolveAggregateCommand(engRaw, trimmed, useBanglaDigits, language)?.let { return it }
 
+        // 2.1 Curriculum specials (Prime factors, Interest, Area, Median)
+        trySolveCurriculumCommands(engRaw, trimmed, useBanglaDigits, language)?.let { return it }
+
         // 3. Percentage phrase: "200 এর 15%" or "15% of 200"
         trySolvePercentPhrase(engRaw, trimmed, useBanglaDigits, language)?.let { return it }
 
@@ -337,6 +340,182 @@ object MathSolverEngine {
                 )
             }
         }
+    }
+
+    private fun trySolveCurriculumCommands(
+        engRaw: String,
+        rawInput: String,
+        useBangla: Boolean,
+        language: AppLanguage
+    ): MathSolveResult? {
+        val lower = engRaw.trim().lowercase()
+
+        // 1. Prime Factorization: "prime 60" or "মৌলিক উৎপাদক 60"
+        if (lower.startsWith("prime") || lower.startsWith("মৌলিক") || lower.startsWith("মৌলিক উৎপাদক")) {
+            val num = Regex("""\d+""").find(engRaw)?.value?.toLongOrNull() ?: return null
+            if (num < 2) return MathSolveResult.Error("Invalid number")
+            var temp = num
+            val factors = mutableListOf<Long>()
+            val khata = mutableListOf<String>()
+            var d = 2L
+            while (d * d <= temp) {
+                while (temp % d == 0L) {
+                    khata += "$d | $temp"
+                    factors += d
+                    temp /= d
+                }
+                d++
+            }
+            if (temp > 1L) {
+                factors += temp
+            }
+            khata += "    1"
+            val facStr = factors.joinToString(" × ")
+            khata += if (language == AppLanguage.BANGLA) "মৌলিক উৎপাদক = $facStr" else "Prime factors = $facStr"
+            val steps = if (language == AppLanguage.BANGLA) {
+                listOf("সংখ্যা: $num", "ধাপ ১: মৌলিক সংখ্যা দ্বারা ভাগ করে উৎপাদক নির্ণয়", "নির্ণেয় মৌলিক উৎপাদক: $facStr")
+            } else {
+                listOf("Number: $num", "Step 1: Divide by prime factors successively", "Prime factors: $facStr")
+            }
+            return MathSolveResult.Success(
+                originalInput = digits(rawInput, useBangla),
+                normalizedExpression = "Prime($num)",
+                answerText = digits(facStr, useBangla),
+                khataLines = khata.map { digits(it, useBangla) },
+                explanationSteps = steps.map { digits(it, useBangla) },
+                layoutType = MathLayoutType.CALCULATOR
+            )
+        }
+
+        // 2. Simple Interest (সরল মুনাফা): "interest p=5000 n=3 r=5" or "মুনাফা P=5000 n=3 r=5"
+        if (lower.startsWith("interest") || lower.startsWith("মুনাফা") || lower.startsWith("সরল মুনাফা")) {
+            val nums = Regex("""-?\d+(?:\.\d+)?""").findAll(engRaw).mapNotNull { it.value.toDoubleOrNull() }.toList()
+            if (nums.size >= 3) {
+                val p = nums[0]
+                val n = nums[1]
+                val r = nums[2]
+                val iVal = (p * n * r) / 100.0
+                val total = p + iVal
+                val pStr = formatNumber(p)
+                val nStr = formatNumber(n)
+                val rStr = formatNumber(r)
+                val iStr = formatNumber(iVal)
+                val totStr = formatNumber(total)
+                val khata = listOf(
+                    "I = (P × n × r) ÷ 100",
+                    "I = ($pStr × $nStr × $rStr) ÷ 100",
+                    "I = ${formatNumber(p * n * r)} ÷ 100 = $iStr",
+                    "Total = P + I = $pStr + $iStr = $totStr"
+                )
+                val steps = if (language == AppLanguage.BANGLA) {
+                    listOf(
+                        "মূলধন (P) = $pStr টাকা, সময় (n) = $nStr বছর, মুনাফার হার (r) = $rStr%",
+                        "সূত্র: সরল মুনাফা I = (Pnr)/100 = ($pStr × $nStr × $rStr)/100 = $iStr টাকা",
+                        "মোট পরিমাণ (A) = P + I = $totStr টাকা"
+                    )
+                } else {
+                    listOf(
+                        "Principal P = $pStr, Time n = $nStr, Rate r = $rStr%",
+                        "Formula: Interest I = (Pnr)/100 = $iStr",
+                        "Total Amount A = P + I = $totStr"
+                    )
+                }
+                return MathSolveResult.Success(
+                    originalInput = digits(rawInput, useBangla),
+                    normalizedExpression = "Interest(P=$pStr,n=$nStr,r=$rStr)",
+                    answerText = digits("$iStr (Total: $totStr)", useBangla),
+                    khataLines = khata.map { digits(it, useBangla) },
+                    explanationSteps = steps.map { digits(it, useBangla) },
+                    layoutType = MathLayoutType.CALCULATOR
+                )
+            }
+        }
+
+        // 3. Median (মধ্যক): "median 12, 15, 10, 18, 20" or "মধ্যক 12,15,10,18"
+        if (lower.startsWith("median") || lower.startsWith("মধ্যক")) {
+            val nums = Regex("""-?\d+(?:\.\d+)?""").findAll(engRaw).mapNotNull { it.value.toDoubleOrNull() }.sorted().toList()
+            if (nums.isNotEmpty()) {
+                val size = nums.size
+                val median = if (size % 2 == 1) {
+                    nums[size / 2]
+                } else {
+                    (nums[size / 2 - 1] + nums[size / 2]) / 2.0
+                }
+                val medStr = formatNumber(median)
+                val sortedJoined = nums.joinToString(", ") { formatNumber(it) }
+                val khata = listOf(
+                    "সাজানো উপাত্ত: $sortedJoined",
+                    "পদসংখ্যা n = $size",
+                    "মধ্যক = $medStr"
+                )
+                val steps = if (language == AppLanguage.BANGLA) {
+                    listOf("ধাপ ১: উপাত্তগুলো ছোট থেকে বড় সাজাই", "ধাপ ২: মধ্যক নির্ণয় = $medStr")
+                } else {
+                    listOf("Step 1: Sort data", "Step 2: Median = $medStr")
+                }
+                return MathSolveResult.Success(
+                    originalInput = digits(rawInput, useBangla),
+                    normalizedExpression = "Median(${nums.size})",
+                    answerText = digits(medStr, useBangla),
+                    khataLines = khata.map { digits(it, useBangla) },
+                    explanationSteps = steps.map { digits(it, useBangla) },
+                    layoutType = MathLayoutType.CALCULATOR
+                )
+            }
+        }
+
+        // 4. Area & Perimeter (ক্ষেত্রফল ও পরিসীমা): "area 12, 8" or "ক্ষেত্রফল ১২, ৮"
+        if (lower.startsWith("area") || lower.startsWith("ক্ষেত্রফল")) {
+            val nums = Regex("""-?\d+(?:\.\d+)?""").findAll(engRaw).mapNotNull { it.value.toDoubleOrNull() }.toList()
+            if (nums.size >= 2) {
+                val l = nums[0]
+                val w = nums[1]
+                val area = l * w
+                val perim = 2 * (l + w)
+                val aStr = formatNumber(area)
+                val pStr = formatNumber(perim)
+                val khata = listOf(
+                    "দৈর্ঘ্য (l) = ${formatNumber(l)}, প্রস্থ (w) = ${formatNumber(w)}",
+                    "ক্ষেত্রফল = l × w = $aStr বর্গ একক",
+                    "পরিসীমা = 2(l + w) = $pStr একক"
+                )
+                val steps = if (language == AppLanguage.BANGLA) {
+                    listOf("আয়তক্ষেত্রের ক্ষেত্রফল = দৈর্ঘ্য × প্রস্থ = $aStr", "পরিসীমা = 2(দৈর্ঘ্য + প্রস্থ) = $pStr")
+                } else {
+                    listOf("Rectangle Area = l × w = $aStr", "Perimeter = 2(l + w) = $pStr")
+                }
+                return MathSolveResult.Success(
+                    originalInput = digits(rawInput, useBangla),
+                    normalizedExpression = "Area($l,$w)",
+                    answerText = digits("Area: $aStr, Perimeter: $pStr", useBangla),
+                    khataLines = khata.map { digits(it, useBangla) },
+                    explanationSteps = steps.map { digits(it, useBangla) },
+                    layoutType = MathLayoutType.CALCULATOR
+                )
+            } else if (nums.size == 1) {
+                val s = nums[0]
+                val area = s * s
+                val perim = 4 * s
+                val aStr = formatNumber(area)
+                val pStr = formatNumber(perim)
+                val khata = listOf(
+                    "বাহু (a) = ${formatNumber(s)}",
+                    "বর্গক্ষেত্র ক্ষেত্রফল = a² = $aStr",
+                    "পরিসীমা = 4a = $pStr"
+                )
+                val steps = listOf("Square Area = $aStr", "Perimeter = $pStr")
+                return MathSolveResult.Success(
+                    originalInput = digits(rawInput, useBangla),
+                    normalizedExpression = "Area($s)",
+                    answerText = digits("Area: $aStr, Perimeter: $pStr", useBangla),
+                    khataLines = khata.map { digits(it, useBangla) },
+                    explanationSteps = steps.map { digits(it, useBangla) },
+                    layoutType = MathLayoutType.CALCULATOR
+                )
+            }
+        }
+
+        return null
     }
 
     private fun trySolvePercentPhrase(

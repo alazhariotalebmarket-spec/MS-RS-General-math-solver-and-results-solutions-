@@ -37,6 +37,7 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -128,14 +129,17 @@ private val PASS_MARK_OPTIONS = listOf(11, 17, 33, 50)
 
 private val OBTAINED_MARK_OPTIONS: List<Int> = (1..100).toList()
 
-private val BrandGreen = Color(0xFF0E7A3D)
-private val SoftGreenBg = Color(0xFFF3FAF6)
-private val SoftGreenBorder = Color(0xFFB7DEC8)
+// Task 1 Color Constants (Dark Green-Black Theme)
+private val DarkScreenBg = Color(0xFF0F1A13)
+private val DarkCardBg = Color(0xFF1A2E22)
+private val DarkBorder = Color(0xFF2E6B4A)
+private val DarkHint = Color(0xFF9DB8A6)
+private val DarkGreenAccent = Color(0xFF4ADE80)
 
 private data class SubjectEntryState(
     val name: String,
     val fullMarks: Int = 100,
-    val passMark: Int = 33,
+    val passMark: Int? = null,
     val obtainedMarks: Int? = null
 )
 
@@ -223,7 +227,6 @@ fun ResultFormScreen(
     var rollNumber by remember { mutableIntStateOf(1) }
     var rollManuallyEdited by remember { mutableStateOf(false) }
 
-    // Preserved silently when editing existing records
     var fatherName by remember { mutableStateOf("") }
     var motherName by remember { mutableStateOf("") }
     var photoPath by remember { mutableStateOf<String?>(null) }
@@ -234,7 +237,7 @@ fun ResultFormScreen(
     val subjectRows = remember {
         mutableStateListOf<SubjectEntryState>().apply {
             SUBJECT_OPTIONS.forEach { defaultName ->
-                add(SubjectEntryState(name = defaultName, fullMarks = 100, passMark = 33, obtainedMarks = null))
+                add(SubjectEntryState(name = defaultName, fullMarks = 100, passMark = null, obtainedMarks = null))
             }
         }
     }
@@ -266,7 +269,7 @@ fun ResultFormScreen(
                                 SubjectEntryState(
                                     name = sub.name.ifBlank { SUBJECT_OPTIONS[i] },
                                     fullMarks = 100,
-                                    passMark = if (sub.passMark in PASS_MARK_OPTIONS) sub.passMark else 33,
+                                    passMark = if (sub.passMark in PASS_MARK_OPTIONS) sub.passMark else null,
                                     obtainedMarks = if (obtInt in 1..100) obtInt else null
                                 )
                             )
@@ -279,7 +282,6 @@ fun ResultFormScreen(
         }
     }
 
-    // Auto roll based on selected class & exam for new result
     LaunchedEffect(className, examName, resultId) {
         if (resultId == 0L && !rollManuallyEdited && className.isNotBlank()) {
             val nextRoll = getNextRoll(className, examName)
@@ -291,7 +293,7 @@ fun ResultFormScreen(
         SubjectMark(
             name = row.name.trim(),
             fullMarks = 100,
-            passMark = row.passMark,
+            passMark = row.passMark ?: 33,
             obtainedMarks = (row.obtainedMarks ?: 0).toDouble(),
             isEnabled = true
         )
@@ -299,7 +301,7 @@ fun ResultFormScreen(
     val liveSummary = ResultCalculator.calculateSummary(currentSubjectModels)
 
     Scaffold(
-        containerColor = MaterialTheme.colorScheme.background,
+        containerColor = DarkScreenBg,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Box(modifier = Modifier.statusBarsPadding()) {
@@ -313,7 +315,7 @@ fun ResultFormScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(MaterialTheme.colorScheme.background)
+                .background(DarkScreenBg)
                 .padding(innerPadding)
                 .navigationBarsPadding()
                 .imePadding()
@@ -322,37 +324,20 @@ fun ResultFormScreen(
             verticalArrangement = Arrangement.spacedBy(14.dp)
         ) {
             // 1. মাদ্রাসার নাম
-            FormCardContainer {
+            DarkFormCardContainer {
                 SectionFieldTitle("১. মাদ্রাসার নাম")
-                OutlinedTextField(
+                DarkDarkTextField(
                     value = institutionName,
                     onValueChange = { institutionName = it },
-                    placeholder = {
-                        Text(
-                            text = "মাদ্রাসার নাম লিখুন",
-                            fontSize = 16.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.Black),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = BrandGreen,
-                        unfocusedBorderColor = SoftGreenBorder,
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("form_institution_input")
+                    placeholderText = "মাদ্রাসার নাম লিখুন",
+                    modifier = Modifier.testTag("form_institution_input")
                 )
             }
 
             // 2. পরীক্ষার নাম
-            FormCardContainer {
+            DarkFormCardContainer {
                 SectionFieldTitle("২. পরীক্ষার নাম")
-                BottomSheetDropdownBox(
+                DarkBottomSheetDropdownBox(
                     value = examName,
                     onClick = { activeSheet = ActiveBottomSheet.Exam },
                     modifier = Modifier.testTag("form_exam_input")
@@ -360,9 +345,9 @@ fun ResultFormScreen(
             }
 
             // 3. শ্রেণী / জামাত
-            FormCardContainer {
+            DarkFormCardContainer {
                 SectionFieldTitle("৩. শ্রেণী / জামাত")
-                BottomSheetDropdownBox(
+                DarkBottomSheetDropdownBox(
                     value = className,
                     onClick = { activeSheet = ActiveBottomSheet.ClassName },
                     modifier = Modifier.testTag("form_class_input")
@@ -370,9 +355,9 @@ fun ResultFormScreen(
             }
 
             // 4. সাল / সেশন
-            FormCardContainer {
+            DarkFormCardContainer {
                 SectionFieldTitle("৪. সাল / সেশন")
-                BottomSheetDropdownBox(
+                DarkBottomSheetDropdownBox(
                     value = yearSession,
                     onClick = { activeSheet = ActiveBottomSheet.YearSession },
                     modifier = Modifier.testTag("form_year_input")
@@ -380,37 +365,20 @@ fun ResultFormScreen(
             }
 
             // 5. শিক্ষার্থীর নাম
-            FormCardContainer {
+            DarkFormCardContainer {
                 SectionFieldTitle("৫. শিক্ষার্থীর নাম")
-                OutlinedTextField(
+                DarkDarkTextField(
                     value = studentName,
                     onValueChange = { studentName = it },
-                    placeholder = {
-                        Text(
-                            text = "শিক্ষার্থীর নাম লিখুন",
-                            fontSize = 16.sp,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    },
-                    textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.Black),
-                    singleLine = true,
-                    shape = RoundedCornerShape(12.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = BrandGreen,
-                        unfocusedBorderColor = SoftGreenBorder,
-                        focusedContainerColor = Color.White,
-                        unfocusedContainerColor = Color.White
-                    ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .testTag("form_student_name_input")
+                    placeholderText = "শিক্ষার্থীর নাম লিখুন",
+                    modifier = Modifier.testTag("form_student_name_input")
                 )
             }
 
             // 6. রোল নাম্বার
-            FormCardContainer {
+            DarkFormCardContainer {
                 SectionFieldTitle("৬. রোল নাম্বার")
-                BottomSheetDropdownBox(
+                DarkBottomSheetDropdownBox(
                     value = toBn(rollNumber),
                     onClick = { activeSheet = ActiveBottomSheet.RollNumber },
                     modifier = Modifier.testTag("form_roll_input")
@@ -422,16 +390,16 @@ fun ResultFormScreen(
                 text = "৭. বিষয়ের নাম ও নম্বর (৮টি বিষয়)",
                 fontSize = 18.sp,
                 fontWeight = FontWeight.ExtraBold,
-                color = BrandGreen,
+                color = Color.White,
                 modifier = Modifier.padding(top = 4.dp, start = 2.dp)
             )
 
             subjectRows.forEachIndexed { idx, row ->
                 val evalSub = liveSummary.evaluatedSubjects.getOrNull(idx)
                 Card(
-                    colors = CardDefaults.cardColors(containerColor = Color.White),
+                    colors = CardDefaults.cardColors(containerColor = DarkCardBg),
                     shape = RoundedCornerShape(16.dp),
-                    border = BorderStroke(1.2.dp, SoftGreenBorder),
+                    border = BorderStroke(1.2.dp, DarkBorder),
                     elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
                     modifier = Modifier.fillMaxWidth()
                 ) {
@@ -450,7 +418,7 @@ fun ResultFormScreen(
                                 text = "বিষয় ${toBn(idx + 1)}",
                                 fontSize = 16.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = BrandGreen
+                                color = DarkGreenAccent
                             )
                             if (row.obtainedMarks != null && evalSub != null) {
                                 Surface(
@@ -474,9 +442,9 @@ fun ResultFormScreen(
                                 text = "বিষয়ের নাম",
                                 fontSize = 14.sp,
                                 fontWeight = FontWeight.SemiBold,
-                                color = Color(0xFF2D4A38)
+                                color = Color.White
                             )
-                            BottomSheetDropdownBox(
+                            DarkBottomSheetDropdownBox(
                                 value = row.name,
                                 onClick = { activeSheet = ActiveBottomSheet.SubjectName(idx) },
                                 modifier = Modifier.testTag("subject_name_$idx")
@@ -498,13 +466,13 @@ fun ResultFormScreen(
                                     text = "পূর্ণমান",
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color(0xFF2D4A38),
+                                    color = Color.White,
                                     maxLines = 1
                                 )
                                 Surface(
-                                    color = SoftGreenBg,
+                                    color = DarkCardBg,
                                     shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.2.dp, SoftGreenBorder),
+                                    border = BorderStroke(1.2.dp, DarkBorder),
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .height(52.dp)
@@ -517,7 +485,7 @@ fun ResultFormScreen(
                                             text = "১০০",
                                             fontSize = 17.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = BrandGreen,
+                                            color = DarkGreenAccent,
                                             maxLines = 1
                                         )
                                     }
@@ -538,11 +506,12 @@ fun ResultFormScreen(
                                         text = "পাস",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF2D4A38),
+                                        color = Color.White,
                                         maxLines = 1
                                     )
-                                    BottomSheetDropdownBox(
-                                        value = toBn(row.passMark),
+                                    DarkBottomSheetDropdownBox(
+                                        value = row.passMark?.let { toBn(it) } ?: "বাছুন",
+                                        isPlaceholder = row.passMark == null,
                                         onClick = { activeSheet = ActiveBottomSheet.PassMark(idx) },
                                         compactHorizontalPadding = true,
                                         modifier = Modifier.testTag("subject_pass_$idx")
@@ -558,10 +527,10 @@ fun ResultFormScreen(
                                         text = "প্রাপ্ত নাম্বার",
                                         fontSize = 14.sp,
                                         fontWeight = FontWeight.SemiBold,
-                                        color = Color(0xFF2D4A38),
+                                        color = Color.White,
                                         maxLines = 1
                                     )
-                                    BottomSheetDropdownBox(
+                                    DarkBottomSheetDropdownBox(
                                         value = row.obtainedMarks?.let { toBn(it) } ?: "বাছুন",
                                         isPlaceholder = row.obtainedMarks == null,
                                         onClick = { activeSheet = ActiveBottomSheet.ObtainedMarks(idx) },
@@ -602,8 +571,8 @@ fun ResultFormScreen(
                     )
                 },
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = BrandGreen,
-                    contentColor = Color.White
+                    containerColor = DarkGreenAccent,
+                    contentColor = Color(0xFF0F1A13)
                 ),
                 shape = RoundedCornerShape(16.dp),
                 modifier = Modifier
@@ -625,18 +594,26 @@ fun ResultFormScreen(
         }
     }
 
-    // Bottom Sliding Sheets for ALL Dropdowns
+    // Bottom Sliding Sheets (ALL DARK)
     val sheet = activeSheet
     if (sheet != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
         ModalBottomSheet(
             onDismissRequest = { activeSheet = null },
             sheetState = sheetState,
-            containerColor = Color.White
+            containerColor = DarkScreenBg,
+            dragHandle = {
+                // Custom Light Green Handle
+                Surface(
+                    color = DarkGreenAccent,
+                    shape = RoundedCornerShape(50),
+                    modifier = Modifier.padding(vertical = 10.dp).width(40.dp).height(4.dp)
+                ) {}
+            }
         ) {
             when (sheet) {
                 ActiveBottomSheet.Exam -> {
-                    StringListSheetContent(
+                    DarkStringListSheetContent(
                         title = "পরীক্ষার নাম নির্বাচন করুন",
                         options = EXAM_OPTIONS,
                         selected = examName,
@@ -648,7 +625,7 @@ fun ResultFormScreen(
                 }
 
                 ActiveBottomSheet.ClassName -> {
-                    StringListSheetContent(
+                    DarkStringListSheetContent(
                         title = "শ্রেণী / জামাত নির্বাচন করুন",
                         options = CLASS_OPTIONS,
                         selected = className,
@@ -660,7 +637,7 @@ fun ResultFormScreen(
                 }
 
                 ActiveBottomSheet.YearSession -> {
-                    StringListSheetContent(
+                    DarkStringListSheetContent(
                         title = "সাল / সেশন নির্বাচন করুন",
                         options = YEAR_OPTIONS,
                         selected = yearSession,
@@ -672,7 +649,7 @@ fun ResultFormScreen(
                 }
 
                 ActiveBottomSheet.RollNumber -> {
-                    NumberGridSheetContent(
+                    DarkNumberGridSheetContent(
                         title = "রোল নাম্বার নির্বাচন করুন (১–৫০০)",
                         numbers = ROLL_OPTIONS,
                         selected = rollNumber,
@@ -687,7 +664,7 @@ fun ResultFormScreen(
 
                 is ActiveBottomSheet.SubjectName -> {
                     val idx = sheet.index
-                    StringListSheetContent(
+                    DarkStringListSheetContent(
                         title = "বিষয়ের নাম নির্বাচন করুন (৮টি বিষয়)",
                         options = SUBJECT_OPTIONS,
                         selected = subjectRows[idx].name,
@@ -709,10 +686,10 @@ fun ResultFormScreen(
 
                 is ActiveBottomSheet.PassMark -> {
                     val idx = sheet.index
-                    StringListSheetContent(
+                    DarkStringListSheetContent(
                         title = "পাস নম্বর নির্বাচন করুন",
                         options = PASS_MARK_OPTIONS.map { toBn(it) },
-                        selected = toBn(subjectRows[idx].passMark),
+                        selected = subjectRows[idx].passMark?.let { toBn(it) } ?: "",
                         onSelect = { pickedBn ->
                             val pickedInt = DigitHelper.toEnglishDigits(pickedBn).toIntOrNull() ?: 33
                             subjectRows[idx] = subjectRows[idx].copy(passMark = pickedInt)
@@ -723,7 +700,7 @@ fun ResultFormScreen(
 
                 is ActiveBottomSheet.ObtainedMarks -> {
                     val idx = sheet.index
-                    NumberGridSheetContent(
+                    DarkNumberGridSheetContent(
                         title = "${subjectRows[idx].name} — প্রাপ্ত নাম্বার (১–১০০)",
                         numbers = OBTAINED_MARK_OPTIONS,
                         selected = subjectRows[idx].obtainedMarks,
@@ -740,11 +717,11 @@ fun ResultFormScreen(
 }
 
 @Composable
-private fun FormCardContainer(content: @Composable () -> Unit) {
+private fun DarkFormCardContainer(content: @Composable () -> Unit) {
     Card(
-        colors = CardDefaults.cardColors(containerColor = Color.White),
+        colors = CardDefaults.cardColors(containerColor = DarkCardBg),
         shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.2.dp, SoftGreenBorder),
+        border = BorderStroke(1.2.dp, DarkBorder),
         elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -765,12 +742,45 @@ private fun SectionFieldTitle(title: String) {
         text = title,
         fontSize = 16.sp,
         fontWeight = FontWeight.Bold,
-        color = BrandGreen
+        color = Color.White
     )
 }
 
 @Composable
-private fun BottomSheetDropdownBox(
+private fun DarkDarkTextField(
+    value: String,
+    onValueChange: (String) -> Unit,
+    placeholderText: String,
+    modifier: Modifier = Modifier
+) {
+    OutlinedTextField(
+        value = value,
+        onValueChange = onValueChange,
+        placeholder = {
+            Text(
+                text = placeholderText,
+                fontSize = 16.sp,
+                color = DarkHint
+            )
+        },
+        textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White),
+        singleLine = true,
+        shape = RoundedCornerShape(12.dp),
+        colors = OutlinedTextFieldDefaults.colors(
+            focusedBorderColor = DarkGreenAccent,
+            unfocusedBorderColor = DarkBorder,
+            focusedContainerColor = DarkCardBg,
+            unfocusedContainerColor = DarkCardBg,
+            cursorColor = DarkGreenAccent,
+            focusedTextColor = Color.White,
+            unfocusedTextColor = Color.White
+        ),
+        modifier = modifier.fillMaxWidth()
+    )
+}
+
+@Composable
+private fun DarkBottomSheetDropdownBox(
     value: String,
     onClick: () -> Unit,
     modifier: Modifier = Modifier,
@@ -778,9 +788,9 @@ private fun BottomSheetDropdownBox(
     compactHorizontalPadding: Boolean = false
 ) {
     Surface(
-        color = Color.White,
+        color = DarkCardBg,
         shape = RoundedCornerShape(12.dp),
-        border = BorderStroke(1.3.dp, SoftGreenBorder),
+        border = BorderStroke(1.3.dp, DarkBorder),
         modifier = modifier
             .fillMaxWidth()
             .heightIn(min = 52.dp)
@@ -801,7 +811,7 @@ private fun BottomSheetDropdownBox(
                 text = value,
                 fontSize = if (compactHorizontalPadding) 16.sp else 17.sp,
                 fontWeight = if (isPlaceholder) FontWeight.Medium else FontWeight.SemiBold,
-                color = if (isPlaceholder) Color(0xFF6B7E73) else Color(0xFF102A1C),
+                color = if (isPlaceholder) DarkHint else Color.White,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis,
                 modifier = Modifier.weight(1f)
@@ -810,7 +820,7 @@ private fun BottomSheetDropdownBox(
             Icon(
                 imageVector = Icons.Filled.KeyboardArrowDown,
                 contentDescription = "Select",
-                tint = BrandGreen,
+                tint = DarkGreenAccent,
                 modifier = Modifier.size(24.dp)
             )
         }
@@ -818,7 +828,7 @@ private fun BottomSheetDropdownBox(
 }
 
 @Composable
-private fun StringListSheetContent(
+private fun DarkStringListSheetContent(
     title: String,
     options: List<String>,
     selected: String,
@@ -829,6 +839,7 @@ private fun StringListSheetContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .background(DarkScreenBg)
             .navigationBarsPadding()
             .padding(bottom = 14.dp)
     ) {
@@ -836,13 +847,14 @@ private fun StringListSheetContent(
             text = title,
             fontSize = 18.sp,
             fontWeight = FontWeight.ExtraBold,
-            color = BrandGreen,
+            color = Color.White,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
         )
         if (headerActionLabel != null && onHeaderAction != null) {
             Surface(
-                color = BrandGreen,
+                color = DarkCardBg,
                 shape = RoundedCornerShape(12.dp),
+                border = BorderStroke(1.2.dp, DarkGreenAccent),
                 modifier = Modifier
                     .fillMaxWidth()
                     .padding(horizontal = 14.dp, vertical = 6.dp)
@@ -861,7 +873,7 @@ private fun StringListSheetContent(
                     Icon(
                         imageVector = Icons.Filled.Check,
                         contentDescription = null,
-                        tint = Color.White,
+                        tint = DarkGreenAccent,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(Modifier.width(8.dp))
@@ -876,7 +888,7 @@ private fun StringListSheetContent(
                 }
             }
         }
-        HorizontalDivider(color = SoftGreenBorder)
+        HorizontalDivider(color = DarkBorder)
         LazyColumn(
             modifier = Modifier
                 .fillMaxWidth()
@@ -887,9 +899,9 @@ private fun StringListSheetContent(
             items(options) { item ->
                 val isSelected = item == selected
                 Surface(
-                    color = if (isSelected) BrandGreen else SoftGreenBg,
+                    color = if (isSelected) DarkBorder else DarkCardBg,
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, if (isSelected) BrandGreen else SoftGreenBorder),
+                    border = BorderStroke(1.dp, if (isSelected) DarkGreenAccent else DarkBorder),
                     modifier = Modifier
                         .fillMaxWidth()
                         .heightIn(min = 48.dp)
@@ -907,13 +919,13 @@ private fun StringListSheetContent(
                             text = item,
                             fontSize = 17.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
-                            color = if (isSelected) Color.White else Color(0xFF102A1C)
+                            color = Color.White
                         )
                         if (isSelected) {
                             Icon(
                                 imageVector = Icons.Filled.Check,
                                 contentDescription = null,
-                                tint = Color.White,
+                                tint = DarkGreenAccent,
                                 modifier = Modifier.size(20.dp)
                             )
                         }
@@ -925,7 +937,7 @@ private fun StringListSheetContent(
 }
 
 @Composable
-private fun NumberGridSheetContent(
+private fun DarkNumberGridSheetContent(
     title: String,
     numbers: List<Int>,
     selected: Int?,
@@ -935,6 +947,7 @@ private fun NumberGridSheetContent(
     Column(
         modifier = Modifier
             .fillMaxWidth()
+            .background(DarkScreenBg)
             .navigationBarsPadding()
             .padding(bottom = 16.dp)
     ) {
@@ -942,10 +955,10 @@ private fun NumberGridSheetContent(
             text = title,
             fontSize = 18.sp,
             fontWeight = FontWeight.ExtraBold,
-            color = BrandGreen,
+            color = Color.White,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
         )
-        HorizontalDivider(color = SoftGreenBorder)
+        HorizontalDivider(color = DarkBorder)
         LazyVerticalGrid(
             columns = GridCells.Fixed(5),
             modifier = Modifier
@@ -958,9 +971,9 @@ private fun NumberGridSheetContent(
             items(numbers) { num ->
                 val isSelected = num == selected
                 Surface(
-                    color = if (isSelected) BrandGreen else SoftGreenBg,
+                    color = if (isSelected) DarkBorder else DarkCardBg,
                     shape = RoundedCornerShape(12.dp),
-                    border = BorderStroke(1.dp, if (isSelected) BrandGreen else SoftGreenBorder),
+                    border = BorderStroke(1.dp, if (isSelected) DarkGreenAccent else DarkBorder),
                     modifier = Modifier
                         .height(48.dp)
                         .clip(RoundedCornerShape(12.dp))
@@ -971,7 +984,7 @@ private fun NumberGridSheetContent(
                             text = formatNumber(num),
                             fontSize = 16.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isSelected) Color.White else Color(0xFF102A1C),
+                            color = Color.White,
                             textAlign = TextAlign.Center,
                             maxLines = 1
                         )
