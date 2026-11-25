@@ -299,7 +299,7 @@ fun ResultFormScreen(
     val liveSummary = ResultCalculator.calculateSummary(currentSubjectModels)
 
     Scaffold(
-        containerColor = Color.White,
+        containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
             Box(modifier = Modifier.statusBarsPadding()) {
@@ -313,7 +313,7 @@ fun ResultFormScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .background(SoftGreenBg)
+                .background(MaterialTheme.colorScheme.background)
                 .padding(innerPadding)
                 .navigationBarsPadding()
                 .imePadding()
