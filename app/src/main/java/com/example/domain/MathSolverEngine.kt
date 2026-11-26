@@ -5,11 +5,19 @@ import com.example.core.DigitHelper
 import com.example.data.MathLayoutType
 import kotlin.math.PI
 import kotlin.math.abs
+import kotlin.math.acos
+import kotlin.math.asin
+import kotlin.math.atan
 import kotlin.math.cbrt
+import kotlin.math.cos
 import kotlin.math.floor
+import kotlin.math.ln
+import kotlin.math.log10
 import kotlin.math.pow
 import kotlin.math.roundToLong
+import kotlin.math.sin
 import kotlin.math.sqrt
+import kotlin.math.tan
 
 sealed class MathSolveResult {
     data class Success(
@@ -431,6 +439,52 @@ object MathSolverEngine {
             }
         }
 
+        // 2.5 Compound Interest (চক্রবৃদ্ধি মুনাফা): "compound P=10000 n=2 r=10" or "চক্রবৃদ্ধি P=10000 n=2 r=10"
+        if (lower.startsWith("compound") || lower.startsWith("চক্রবৃদ্ধি")) {
+            val nums = Regex("""-?\d+(?:\.\d+)?""").findAll(engRaw).mapNotNull { it.value.toDoubleOrNull() }.toList()
+            if (nums.size >= 3) {
+                val p = nums[0]
+                val n = nums[1]
+                val r = nums[2]
+                val factor = (1.0 + r / 100.0).pow(n)
+                val cVal = p * factor
+                val profit = cVal - p
+                val pStr = formatNumber(p)
+                val nStr = formatNumber(n)
+                val rStr = formatNumber(r)
+                val cStr = formatNumber(cVal)
+                val profStr = formatNumber(profit)
+                val khata = listOf(
+                    "C = P × (1 + r/100)^n",
+                    "C = $pStr × (1 + $rStr/100)^$nStr",
+                    "C = $pStr × ${formatNumber(factor)} = $cStr",
+                    if (language == AppLanguage.BANGLA) "চক্রবৃদ্ধি মুনাফা = C - P = $cStr - $pStr = $profStr"
+                    else "Compound Interest = C - P = $cStr - $pStr = $profStr"
+                )
+                val steps = if (language == AppLanguage.BANGLA) {
+                    listOf(
+                        "মূলধন P = $pStr, সময় n = $nStr বছর, হার r = $rStr%",
+                        "সবৃদ্ধিমূল C = P(1 + r/100)^n = $cStr টাকা",
+                        "চক্রবৃদ্ধি মুনাফা = C - P = $profStr টাকা"
+                    )
+                } else {
+                    listOf(
+                        "Principal P = $pStr, Time n = $nStr, Rate r = $rStr%",
+                        "Compound Amount C = P(1 + r/100)^n = $cStr",
+                        "Compound Interest = C - P = $profStr"
+                    )
+                }
+                return MathSolveResult.Success(
+                    originalInput = digits(rawInput, useBangla),
+                    normalizedExpression = "Compound(P=$pStr,n=$nStr,r=$rStr)",
+                    answerText = digits(if (language == AppLanguage.BANGLA) "$profStr (সবৃদ্ধিমূল: $cStr)" else "$profStr (Total: $cStr)", useBangla),
+                    khataLines = khata.map { digits(it, useBangla) },
+                    explanationSteps = steps.map { digits(it, useBangla) },
+                    layoutType = MathLayoutType.CALCULATOR
+                )
+            }
+        }
+
         // 3. Median (মধ্যক): "median 12, 15, 10, 18, 20" or "মধ্যক 12,15,10,18"
         if (lower.startsWith("median") || lower.startsWith("মধ্যক")) {
             val nums = Regex("""-?\d+(?:\.\d+)?""").findAll(engRaw).mapNotNull { it.value.toDoubleOrNull() }.sorted().toList()
@@ -443,15 +497,15 @@ object MathSolverEngine {
                 }
                 val medStr = formatNumber(median)
                 val sortedJoined = nums.joinToString(", ") { formatNumber(it) }
-                val khata = listOf(
-                    "সাজানো উপাত্ত: $sortedJoined",
-                    "পদসংখ্যা n = $size",
-                    "মধ্যক = $medStr"
-                )
+                val khata = if (language == AppLanguage.BANGLA) {
+                    listOf("সাজানো উপাত্ত: $sortedJoined", "পদসংখ্যা n = $size", "মধ্যক = $medStr")
+                } else {
+                    listOf("Sorted Data: $sortedJoined", "Count n = $size", "Median = $medStr")
+                }
                 val steps = if (language == AppLanguage.BANGLA) {
                     listOf("ধাপ ১: উপাত্তগুলো ছোট থেকে বড় সাজাই", "ধাপ ২: মধ্যক নির্ণয় = $medStr")
                 } else {
-                    listOf("Step 1: Sort data", "Step 2: Median = $medStr")
+                    listOf("Step 1: Sort data in ascending order", "Step 2: Median = $medStr")
                 }
                 return MathSolveResult.Success(
                     originalInput = digits(rawInput, useBangla),
@@ -474,11 +528,19 @@ object MathSolverEngine {
                 val perim = 2 * (l + w)
                 val aStr = formatNumber(area)
                 val pStr = formatNumber(perim)
-                val khata = listOf(
-                    "দৈর্ঘ্য (l) = ${formatNumber(l)}, প্রস্থ (w) = ${formatNumber(w)}",
-                    "ক্ষেত্রফল = l × w = $aStr বর্গ একক",
-                    "পরিসীমা = 2(l + w) = $pStr একক"
-                )
+                val khata = if (language == AppLanguage.BANGLA) {
+                    listOf(
+                        "দৈর্ঘ্য (l) = ${formatNumber(l)}, প্রস্থ (w) = ${formatNumber(w)}",
+                        "ক্ষেত্রফল = l × w = $aStr বর্গ একক",
+                        "পরিসীমা = 2(l + w) = $pStr একক"
+                    )
+                } else {
+                    listOf(
+                        "Length (l) = ${formatNumber(l)}, Width (w) = ${formatNumber(w)}",
+                        "Area = l × w = $aStr sq. units",
+                        "Perimeter = 2(l + w) = $pStr units"
+                    )
+                }
                 val steps = if (language == AppLanguage.BANGLA) {
                     listOf("আয়তক্ষেত্রের ক্ষেত্রফল = দৈর্ঘ্য × প্রস্থ = $aStr", "পরিসীমা = 2(দৈর্ঘ্য + প্রস্থ) = $pStr")
                 } else {
@@ -487,7 +549,7 @@ object MathSolverEngine {
                 return MathSolveResult.Success(
                     originalInput = digits(rawInput, useBangla),
                     normalizedExpression = "Area($l,$w)",
-                    answerText = digits("Area: $aStr, Perimeter: $pStr", useBangla),
+                    answerText = digits(if (language == AppLanguage.BANGLA) "ক্ষেত্রফল: $aStr, পরিসীমা: $pStr" else "Area: $aStr, Perimeter: $pStr", useBangla),
                     khataLines = khata.map { digits(it, useBangla) },
                     explanationSteps = steps.map { digits(it, useBangla) },
                     layoutType = MathLayoutType.CALCULATOR
@@ -498,16 +560,163 @@ object MathSolverEngine {
                 val perim = 4 * s
                 val aStr = formatNumber(area)
                 val pStr = formatNumber(perim)
-                val khata = listOf(
-                    "বাহু (a) = ${formatNumber(s)}",
-                    "বর্গক্ষেত্র ক্ষেত্রফল = a² = $aStr",
-                    "পরিসীমা = 4a = $pStr"
-                )
-                val steps = listOf("Square Area = $aStr", "Perimeter = $pStr")
+                val khata = if (language == AppLanguage.BANGLA) {
+                    listOf("বাহু (a) = ${formatNumber(s)}", "বর্গক্ষেত্র ক্ষেত্রফল = a² = $aStr", "পরিসীমা = 4a = $pStr")
+                } else {
+                    listOf("Side (a) = ${formatNumber(s)}", "Square Area = a² = $aStr", "Perimeter = 4a = $pStr")
+                }
+                val steps = if (language == AppLanguage.BANGLA) {
+                    listOf("বর্গক্ষেত্রের ক্ষেত্রফল = বাহু² = $aStr", "পরিসীমা = ৪ × বাহু = $pStr")
+                } else {
+                    listOf("Square Area = $aStr", "Perimeter = $pStr")
+                }
                 return MathSolveResult.Success(
                     originalInput = digits(rawInput, useBangla),
                     normalizedExpression = "Area($s)",
-                    answerText = digits("Area: $aStr, Perimeter: $pStr", useBangla),
+                    answerText = digits(if (language == AppLanguage.BANGLA) "ক্ষেত্রফল: $aStr, পরিসীমা: $pStr" else "Area: $aStr, Perimeter: $pStr", useBangla),
+                    khataLines = khata.map { digits(it, useBangla) },
+                    explanationSteps = steps.map { digits(it, useBangla) },
+                    layoutType = MathLayoutType.CALCULATOR
+                )
+            }
+        }
+
+        // 5. Circle (বৃত্ত): "circle r=7" or "বৃত্ত 7"
+        if (lower.startsWith("circle") || lower.startsWith("বৃত্ত")) {
+            val r = Regex("""-?\d+(?:\.\d+)?""").find(engRaw)?.value?.toDoubleOrNull() ?: return null
+            if (r <= 0) return MathSolveResult.Error("Invalid radius")
+            val area = PI * r * r
+            val circum = 2.0 * PI * r
+            val rStr = formatNumber(r)
+            val aStr = formatNumber(area)
+            val cStr = formatNumber(circum)
+            val khata = if (language == AppLanguage.BANGLA) {
+                listOf(
+                    "ব্যাসার্ধ (r) = $rStr",
+                    "বৃত্তের ক্ষেত্রফল = πr² = 3.1416 × ($rStr)² = $aStr",
+                    "বৃত্তের পরিধি = 2πr = 2 × 3.1416 × $rStr = $cStr"
+                )
+            } else {
+                listOf(
+                    "Radius (r) = $rStr",
+                    "Area = πr² = $aStr",
+                    "Circumference = 2πr = $cStr"
+                )
+            }
+            val steps = if (language == AppLanguage.BANGLA) {
+                listOf("ধাপ ১: ক্ষেত্রফল = πr² = $aStr বর্গ একক", "ধাপ ২: পরিধি = 2πr = $cStr একক")
+            } else {
+                listOf("Step 1: Area = πr² = $aStr", "Step 2: Circumference = 2πr = $cStr")
+            }
+            return MathSolveResult.Success(
+                originalInput = digits(rawInput, useBangla),
+                normalizedExpression = "Circle(r=$rStr)",
+                answerText = digits(if (language == AppLanguage.BANGLA) "ক্ষেত্রফল: $aStr, পরিধি: $cStr" else "Area: $aStr, Circumference: $cStr", useBangla),
+                khataLines = khata.map { digits(it, useBangla) },
+                explanationSteps = steps.map { digits(it, useBangla) },
+                layoutType = MathLayoutType.CALCULATOR
+            )
+        }
+
+        // 6. Triangle (ত্রিভুজ): 2 numbers -> base, height; 3 numbers -> sides a, b, c (Heron's)
+        if (lower.startsWith("triangle") || lower.startsWith("ত্রিভুজ")) {
+            val nums = Regex("""-?\d+(?:\.\d+)?""").findAll(engRaw).mapNotNull { it.value.toDoubleOrNull() }.toList()
+            if (nums.size == 2) {
+                val b = nums[0]
+                val h = nums[1]
+                val area = 0.5 * b * h
+                val bStr = formatNumber(b)
+                val hStr = formatNumber(h)
+                val aStr = formatNumber(area)
+                val khata = if (language == AppLanguage.BANGLA) {
+                    listOf("ভূমি = $bStr, উচ্চতা = $hStr", "ক্ষেত্রফল = ½ × ভূমি × উচ্চতা", "= ½ × $bStr × $hStr = $aStr")
+                } else {
+                    listOf("Base = $bStr, Height = $hStr", "Area = ½ × b × h = $aStr")
+                }
+                val steps = if (language == AppLanguage.BANGLA) {
+                    listOf("সূত্র: ত্রিভুজের ক্ষেত্রফল = ½ × ভূমি × উচ্চতা = $aStr বর্গ একক")
+                } else {
+                    listOf("Triangle Area = 0.5 × $bStr × $hStr = $aStr")
+                }
+                return MathSolveResult.Success(
+                    originalInput = digits(rawInput, useBangla),
+                    normalizedExpression = "Triangle(b=$bStr,h=$hStr)",
+                    answerText = digits(aStr, useBangla),
+                    khataLines = khata.map { digits(it, useBangla) },
+                    explanationSteps = steps.map { digits(it, useBangla) },
+                    layoutType = MathLayoutType.CALCULATOR
+                )
+            } else if (nums.size >= 3) {
+                val a = nums[0]
+                val b = nums[1]
+                val c = nums[2]
+                if (a + b <= c || a + c <= b || b + c <= a) return MathSolveResult.Error("Invalid triangle sides")
+                val s = (a + b + c) / 2.0
+                val area = sqrt(s * (s - a) * (s - b) * (s - c))
+                val sStr = formatNumber(s)
+                val aStr = formatNumber(area)
+                val khata = listOf(
+                    "a = ${formatNumber(a)}, b = ${formatNumber(b)}, c = ${formatNumber(c)}",
+                    "s = (a + b + c) ÷ 2 = $sStr",
+                    if (language == AppLanguage.BANGLA) "ক্ষেত্রফল = √(s(s-a)(s-b)(s-c)) = $aStr"
+                    else "Area = √(s(s-a)(s-b)(s-c)) = $aStr"
+                )
+                val steps = if (language == AppLanguage.BANGLA) {
+                    listOf("অর্ধপরিসীমা s = $sStr", "বিষমবাহু ত্রিভুজের ক্ষেত্রফল = $aStr বর্গ একক")
+                } else {
+                    listOf("Semi-perimeter s = $sStr", "Heron's Area = $aStr")
+                }
+                return MathSolveResult.Success(
+                    originalInput = digits(rawInput, useBangla),
+                    normalizedExpression = "Triangle($a,$b,$c)",
+                    answerText = digits(aStr, useBangla),
+                    khataLines = khata.map { digits(it, useBangla) },
+                    explanationSteps = steps.map { digits(it, useBangla) },
+                    layoutType = MathLayoutType.CALCULATOR
+                )
+            }
+        }
+
+        // 7. Profit / Loss (লাভ-ক্ষতি): "profit 500, 600" or "লাভ 500, 600"
+        if (lower.startsWith("profit") || lower.startsWith("লাভ")) {
+            val nums = Regex("""-?\d+(?:\.\d+)?""").findAll(engRaw).mapNotNull { it.value.toDoubleOrNull() }.toList()
+            if (nums.size >= 2) {
+                val cp = nums[0]
+                val sp = nums[1]
+                if (cp <= 0) return MathSolveResult.Error("Invalid cost price")
+                val diff = sp - cp
+                val isProfit = diff >= 0
+                val absDiff = abs(diff)
+                val pct = (absDiff * 100.0) / cp
+                val cpStr = formatNumber(cp)
+                val spStr = formatNumber(sp)
+                val diffStr = formatNumber(absDiff)
+                val pctStr = formatNumber(pct)
+                val khata = if (language == AppLanguage.BANGLA) {
+                    listOf(
+                        "ক্রয়মূল্য = $cpStr, বিক্রয়মূল্য = $spStr",
+                        if (isProfit) "লাভ = $spStr - $cpStr = $diffStr টাকা" else "ক্ষতি = $cpStr - $spStr = $diffStr টাকা",
+                        if (isProfit) "শতকরা লাভ = ($diffStr ÷ $cpStr) × 100 = $pctStr%" else "শতকরা ক্ষতি = ($diffStr ÷ $cpStr) × 100 = $pctStr%"
+                    )
+                } else {
+                    listOf(
+                        "Cost Price = $cpStr, Selling Price = $spStr",
+                        if (isProfit) "Profit = $diffStr" else "Loss = $diffStr",
+                        if (isProfit) "Profit % = $pctStr%" else "Loss % = $pctStr%"
+                    )
+                }
+                val steps = khata
+                return MathSolveResult.Success(
+                    originalInput = digits(rawInput, useBangla),
+                    normalizedExpression = "ProfitLoss($cpStr,$spStr)",
+                    answerText = digits(
+                        if (language == AppLanguage.BANGLA) {
+                            if (isProfit) "লাভ $diffStr ($pctStr%)" else "ক্ষতি $diffStr ($pctStr%)"
+                        } else {
+                            if (isProfit) "Profit $diffStr ($pctStr%)" else "Loss $diffStr ($pctStr%)"
+                        },
+                        useBangla
+                    ),
                     khataLines = khata.map { digits(it, useBangla) },
                     explanationSteps = steps.map { digits(it, useBangla) },
                     layoutType = MathLayoutType.CALCULATOR
@@ -1373,8 +1582,15 @@ object MathSolverEngine {
         preferredLayout: MathLayoutType?
     ): MathSolveResult {
         return try {
+            val openParens = normalized.count { it == '(' }
+            val closeParens = normalized.count { it == ')' }
+            val balanced = if (openParens > closeParens) {
+                normalized + ")".repeat(openParens - closeParens)
+            } else {
+                normalized
+            }
             val steps = mutableListOf<String>()
-            val parser = RecursiveParser(normalized, steps)
+            val parser = RecursiveParser(balanced, steps)
             val result = parser.parseExpression()
             if (result.isNaN() || result.isInfinite()) {
                 return MathSolveResult.Error("Division by zero", isDivideByZero = true)
@@ -1478,8 +1694,8 @@ object MathSolverEngine {
                     val res = x / y
                     steps += "${formatVal(x)} ÷ ${formatVal(y)} = ${formatVal(res)}"
                     x = res
-                } else if (ch == '('.code || ch == '√'.code || ch == '∛'.code || ch == 'π'.code) {
-                    // Implicit multiplication e.g. 2(3+4) or 3√16
+                } else if (ch == '('.code || ch == '√'.code || ch == '∛'.code || ch == 'π'.code || (ch in 'a'.code..'z'.code) || (ch in 'A'.code..'Z'.code)) {
+                    // Implicit multiplication e.g. 2(3+4), 3√16, 2sin(30), 2pi
                     val y = parsePower()
                     val res = x * y
                     steps += "${formatVal(x)} × ${formatVal(y)} = ${formatVal(res)}"
@@ -1518,6 +1734,8 @@ object MathSolverEngine {
                     val res = fact.toDouble()
                     steps += "$n! = $fact"
                     x = res
+                } else if (eat('°'.code)) {
+                    // degree marker accepted cleanly
                 } else {
                     return x
                 }
@@ -1572,6 +1790,73 @@ object MathSolverEngine {
                         val arg = parseFactor()
                         x = abs(arg)
                     }
+                    "sin" -> {
+                        val arg = parseFactor()
+                        x = cleanTrigZero(sin(Math.toRadians(arg)))
+                        steps += "sin(${formatVal(arg)}°) = ${formatVal(x)}"
+                    }
+                    "cos" -> {
+                        val arg = parseFactor()
+                        x = cleanTrigZero(cos(Math.toRadians(arg)))
+                        steps += "cos(${formatVal(arg)}°) = ${formatVal(x)}"
+                    }
+                    "tan" -> {
+                        val arg = parseFactor()
+                        val c = cos(Math.toRadians(arg))
+                        if (abs(c) < 1e-10) throw ArithmeticException("Undefined tan")
+                        x = cleanTrigZero(tan(Math.toRadians(arg)))
+                        steps += "tan(${formatVal(arg)}°) = ${formatVal(x)}"
+                    }
+                    "cot" -> {
+                        val arg = parseFactor()
+                        val s = sin(Math.toRadians(arg))
+                        if (abs(s) < 1e-10) throw ArithmeticException("Undefined cot")
+                        x = cleanTrigZero(cos(Math.toRadians(arg)) / s)
+                        steps += "cot(${formatVal(arg)}°) = ${formatVal(x)}"
+                    }
+                    "sec" -> {
+                        val arg = parseFactor()
+                        val c = cos(Math.toRadians(arg))
+                        if (abs(c) < 1e-10) throw ArithmeticException("Undefined sec")
+                        x = cleanTrigZero(1.0 / c)
+                        steps += "sec(${formatVal(arg)}°) = ${formatVal(x)}"
+                    }
+                    "csc", "cosec" -> {
+                        val arg = parseFactor()
+                        val s = sin(Math.toRadians(arg))
+                        if (abs(s) < 1e-10) throw ArithmeticException("Undefined cosec")
+                        x = cleanTrigZero(1.0 / s)
+                        steps += "cosec(${formatVal(arg)}°) = ${formatVal(x)}"
+                    }
+                    "asin" -> {
+                        val arg = parseFactor()
+                        if (arg < -1.0 || arg > 1.0) throw IllegalArgumentException("Domain error")
+                        x = Math.toDegrees(asin(arg))
+                        steps += "sin⁻¹(${formatVal(arg)}) = ${formatVal(x)}°"
+                    }
+                    "acos" -> {
+                        val arg = parseFactor()
+                        if (arg < -1.0 || arg > 1.0) throw IllegalArgumentException("Domain error")
+                        x = Math.toDegrees(acos(arg))
+                        steps += "cos⁻¹(${formatVal(arg)}) = ${formatVal(x)}°"
+                    }
+                    "atan" -> {
+                        val arg = parseFactor()
+                        x = Math.toDegrees(atan(arg))
+                        steps += "tan⁻¹(${formatVal(arg)}) = ${formatVal(x)}°"
+                    }
+                    "log" -> {
+                        val arg = parseFactor()
+                        if (arg <= 0) throw IllegalArgumentException("Log domain error")
+                        x = log10(arg)
+                        steps += "log₁₀(${formatVal(arg)}) = ${formatVal(x)}"
+                    }
+                    "ln" -> {
+                        val arg = parseFactor()
+                        if (arg <= 0) throw IllegalArgumentException("Ln domain error")
+                        x = ln(arg)
+                        steps += "ln(${formatVal(arg)}) = ${formatVal(x)}"
+                    }
                     else -> throw IllegalArgumentException("Unknown function: $name")
                 }
             } else {
@@ -1579,6 +1864,8 @@ object MathSolverEngine {
             }
             return x
         }
+
+        private fun cleanTrigZero(v: Double): Double = if (abs(v) < 1e-12) 0.0 else v
 
         private fun formatVal(v: Double): String {
             val r = floor(v)

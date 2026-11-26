@@ -1,8 +1,10 @@
 package com.example.ui.screens
 
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -26,10 +28,18 @@ import androidx.compose.foundation.lazy.grid.items
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Remove
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Card
@@ -37,7 +47,6 @@ import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LocalTextStyle
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.OutlinedTextField
@@ -61,10 +70,20 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.OffsetMapping
+import androidx.compose.ui.text.input.TransformedText
+import androidx.compose.ui.text.input.VisualTransformation
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -129,12 +148,19 @@ private val PASS_MARK_OPTIONS = listOf(11, 17, 33, 50)
 
 private val OBTAINED_MARK_OPTIONS: List<Int> = (1..100).toList()
 
-// Task 1 Color Constants (Dark Green-Black Theme)
+// Dark Green-Black Theme Constants
 private val DarkScreenBg = Color(0xFF0F1A13)
 private val DarkCardBg = Color(0xFF1A2E22)
 private val DarkBorder = Color(0xFF2E6B4A)
 private val DarkHint = Color(0xFF9DB8A6)
 private val DarkGreenAccent = Color(0xFF4ADE80)
+
+private val BanglaDigitsVisualTransformation = VisualTransformation { text ->
+    TransformedText(
+        AnnotatedString(DigitHelper.toBanglaDigits(text.text)),
+        OffsetMapping.Identity
+    )
+}
 
 private data class SubjectEntryState(
     val name: String,
@@ -214,6 +240,7 @@ fun ResultFormScreen(
     val ext = LocalMsRsColors.current
     val scope = rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
+    val keyboardController = LocalSoftwareKeyboardController.current
     val json = remember { Json { ignoreUnknownKeys = true } }
 
     fun toBn(value: String): String = DigitHelper.toBanglaDigits(value)
@@ -232,7 +259,12 @@ fun ResultFormScreen(
     var photoPath by remember { mutableStateOf<String?>(null) }
     var existingCreatedAt by remember { mutableLongStateOf(System.currentTimeMillis()) }
 
+    var headerExpanded by remember { mutableStateOf(true) }
+    var templateStudent by remember { mutableStateOf<StudentResultEntity?>(null) }
     var activeSheet by remember { mutableStateOf<ActiveBottomSheet?>(null) }
+
+    val subjectFocusRequesters = remember { List(8) { FocusRequester() } }
+    val studentNameFocusRequester = remember { FocusRequester() }
 
     val subjectRows = remember {
         mutableStateListOf<SubjectEntryState>().apply {
@@ -270,7 +302,7 @@ fun ResultFormScreen(
                                     name = sub.name.ifBlank { SUBJECT_OPTIONS[i] },
                                     fullMarks = 100,
                                     passMark = if (sub.passMark in PASS_MARK_OPTIONS) sub.passMark else null,
-                                    obtainedMarks = if (obtInt in 1..100) obtInt else null
+                                    obtainedMarks = if (obtInt in 0..100) obtInt else null
                                 )
                             )
                         } else {
@@ -289,6 +321,15 @@ fun ResultFormScreen(
         }
     }
 
+    LaunchedEffect(className, rollNumber, resultId) {
+        if (resultId == 0L && className.isNotBlank()) {
+            val found = findStudentTemplate(className, rollNumber)
+            templateStudent = if (found != null && found.studentName.isNotBlank()) found else null
+        } else {
+            templateStudent = null
+        }
+    }
+
     val currentSubjectModels = subjectRows.map { row ->
         SubjectMark(
             name = row.name.trim(),
@@ -299,6 +340,7 @@ fun ResultFormScreen(
         )
     }
     val liveSummary = ResultCalculator.calculateSummary(currentSubjectModels)
+    val enteredCount = subjectRows.count { it.obtainedMarks != null }
 
     Scaffold(
         containerColor = DarkScreenBg,
@@ -320,79 +362,349 @@ fun ResultFormScreen(
                 .navigationBarsPadding()
                 .imePadding()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 14.dp, vertical = 14.dp),
-            verticalArrangement = Arrangement.spacedBy(14.dp)
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
-            // 1. মাদ্রাসার নাম
-            DarkFormCardContainer {
-                SectionFieldTitle("১. মাদ্রাসার নাম")
-                DarkDarkTextField(
-                    value = institutionName,
-                    onValueChange = { institutionName = it },
-                    placeholderText = "মাদ্রাসার নাম লিখুন",
-                    modifier = Modifier.testTag("form_institution_input")
-                )
+            // ধাপ ১: প্রতিষ্ঠান ও পরীক্ষার তথ্য (সুন্দরভাবে গুছানো ও সংক্ষিপ্তযোগ্য)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkCardBg),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.2.dp, DarkBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(10.dp))
+                            .clickable { headerExpanded = !headerExpanded }
+                            .padding(vertical = 2.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text(
+                                text = "১. প্রতিষ্ঠান ও পরীক্ষার তথ্য",
+                                fontSize = 16.sp,
+                                fontWeight = FontWeight.ExtraBold,
+                                color = DarkGreenAccent
+                            )
+                            if (!headerExpanded) {
+                                Text(
+                                    text = "$examName • $className • ${toBn(yearSession)}",
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                        Icon(
+                            imageVector = if (headerExpanded) Icons.Filled.ExpandLess else Icons.Filled.ExpandMore,
+                            contentDescription = if (headerExpanded) "সংক্ষিপ্ত করুন" else "বিস্তারিত দেখুন",
+                            tint = DarkGreenAccent
+                        )
+                    }
+
+                    AnimatedVisibility(visible = headerExpanded) {
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            // মাদ্রাসার নাম
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                SectionFieldTitle("মাদ্রাসার নাম")
+                                DarkDarkTextField(
+                                    value = institutionName,
+                                    onValueChange = { institutionName = it },
+                                    placeholderText = "মাদ্রাসার নাম লিখুন",
+                                    imeAction = ImeAction.Next,
+                                    onNext = { studentNameFocusRequester.requestFocus() },
+                                    modifier = Modifier.testTag("form_institution_input")
+                                )
+                            }
+
+                            // পরীক্ষার নাম
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                SectionFieldTitle("পরীক্ষার নাম")
+                                DarkBottomSheetDropdownBox(
+                                    value = examName,
+                                    onClick = { activeSheet = ActiveBottomSheet.Exam },
+                                    modifier = Modifier.testTag("form_exam_input")
+                                )
+                            }
+
+                            // শ্রেণী / জামাত
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                SectionFieldTitle("শ্রেণী / জামাত")
+                                DarkBottomSheetDropdownBox(
+                                    value = className,
+                                    onClick = { activeSheet = ActiveBottomSheet.ClassName },
+                                    modifier = Modifier.testTag("form_class_input")
+                                )
+                            }
+
+                            // সাল / সেশন
+                            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                SectionFieldTitle("সাল / সেশন")
+                                DarkBottomSheetDropdownBox(
+                                    value = toBn(yearSession),
+                                    onClick = { activeSheet = ActiveBottomSheet.YearSession },
+                                    modifier = Modifier.testTag("form_year_input")
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            // 2. পরীক্ষার নাম
-            DarkFormCardContainer {
-                SectionFieldTitle("২. পরীক্ষার নাম")
-                DarkBottomSheetDropdownBox(
-                    value = examName,
-                    onClick = { activeSheet = ActiveBottomSheet.Exam },
-                    modifier = Modifier.testTag("form_exam_input")
-                )
+            // ধাপ ২: শিক্ষার্থীর তথ্য ও দ্রুত রোল পরিবর্তন
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkCardBg),
+                shape = RoundedCornerShape(18.dp),
+                border = BorderStroke(1.2.dp, DarkBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Text(
+                        text = "২. শিক্ষার্থীর তথ্য",
+                        fontSize = 16.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DarkGreenAccent
+                    )
+
+                    // শিক্ষার্থীর নাম
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SectionFieldTitle("শিক্ষার্থীর নাম")
+                        DarkDarkTextField(
+                            value = studentName,
+                            onValueChange = { studentName = it },
+                            placeholderText = "শিক্ষার্থীর নাম লিখুন",
+                            imeAction = ImeAction.Next,
+                            onNext = { subjectFocusRequesters[0].requestFocus() },
+                            modifier = Modifier
+                                .focusRequester(studentNameFocusRequester)
+                                .testTag("form_student_name_input")
+                        )
+                    }
+
+                    // রোল নাম্বার (- / Dropdown Sheet / +)
+                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        SectionFieldTitle("রোল নাম্বার")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RollStepButton(
+                                icon = Icons.Filled.Remove,
+                                contentDescription = "আগের রোল",
+                                enabled = rollNumber > 1,
+                                onClick = {
+                                    if (rollNumber > 1) {
+                                        rollNumber -= 1
+                                        rollManuallyEdited = true
+                                    }
+                                }
+                            )
+                            Box(modifier = Modifier.weight(1f)) {
+                                DarkBottomSheetDropdownBox(
+                                    value = toBn(rollNumber),
+                                    onClick = { activeSheet = ActiveBottomSheet.RollNumber },
+                                    modifier = Modifier.testTag("form_roll_input")
+                                )
+                            }
+                            RollStepButton(
+                                icon = Icons.Filled.Add,
+                                contentDescription = "পরবর্তী রোল",
+                                enabled = rollNumber < 500,
+                                onClick = {
+                                    if (rollNumber < 500) {
+                                        rollNumber += 1
+                                        rollManuallyEdited = true
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    // আগের পরীক্ষা থেকে অটো-ফিল সাজেশন
+                    val tpl = templateStudent
+                    if (tpl != null && studentName.isBlank()) {
+                        Surface(
+                            color = DarkScreenBg,
+                            shape = RoundedCornerShape(12.dp),
+                            border = BorderStroke(1.dp, DarkGreenAccent),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(12.dp))
+                                .clickable {
+                                    studentName = tpl.studentName
+                                    if (institutionName.isBlank() && tpl.institutionName.isNotBlank()) {
+                                        institutionName = tpl.institutionName
+                                    }
+                                    fatherName = tpl.fatherName
+                                    motherName = tpl.motherName
+                                    val prevSubs = runCatching {
+                                        json.decodeFromString<List<SubjectMark>>(tpl.subjectsJson)
+                                    }.getOrDefault(emptyList())
+                                    if (prevSubs.isNotEmpty()) {
+                                        for (i in 0 until 8) {
+                                            val ps = prevSubs.getOrNull(i)
+                                            if (ps != null) {
+                                                subjectRows[i] = subjectRows[i].copy(
+                                                    name = ps.name.ifBlank { SUBJECT_OPTIONS[i] },
+                                                    passMark = if (ps.passMark in PASS_MARK_OPTIONS) ps.passMark else subjectRows[i].passMark
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 12.dp, vertical = 10.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Filled.AutoAwesome,
+                                    contentDescription = null,
+                                    tint = DarkGreenAccent,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "আগের তথ্য বসান: ${tpl.studentName}",
+                                    fontSize = 15.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = Color.White,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            }
+                        }
+                    }
+                }
             }
 
-            // 3. শ্রেণী / জামাত
-            DarkFormCardContainer {
-                SectionFieldTitle("৩. শ্রেণী / জামাত")
-                DarkBottomSheetDropdownBox(
-                    value = className,
-                    onClick = { activeSheet = ActiveBottomSheet.ClassName },
-                    modifier = Modifier.testTag("form_class_input")
-                )
+            // লাইভ ফলাফল প্রিভিউ (অটোমেটিক হিসাব)
+            Surface(
+                color = DarkCardBg,
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.3.dp, DarkGreenAccent.copy(alpha = 0.7f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column {
+                        Text(
+                            text = "মোট নম্বর (${toBn(enteredCount)}/৮ বিষয়)",
+                            fontSize = 12.sp,
+                            color = DarkHint
+                        )
+                        Text(
+                            text = "${toBn(ResultCalculator.formatMarks(liveSummary.totalObtainedMarks))} / ${toBn(liveSummary.totalFullMarks)}",
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = Color.White
+                        )
+                    }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(text = "জিপিএ", fontSize = 12.sp, color = DarkHint)
+                        Text(
+                            text = toBn(String.format(java.util.Locale.US, "%.2f", liveSummary.totalGpa)),
+                            fontSize = 17.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = DarkGreenAccent
+                        )
+                    }
+                    Surface(
+                        color = if (liveSummary.isPassed) DarkBorder else ext.failContainer,
+                        shape = RoundedCornerShape(10.dp)
+                    ) {
+                        Text(
+                            text = if (liveSummary.isPassed) "পাস • ${liveSummary.overallGrade}" else "ফেল • F",
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.ExtraBold,
+                            color = if (liveSummary.isPassed) DarkGreenAccent else ext.failRed,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                        )
+                    }
+                }
             }
 
-            // 4. সাল / সেশন
-            DarkFormCardContainer {
-                SectionFieldTitle("৪. সাল / সেশন")
-                DarkBottomSheetDropdownBox(
-                    value = yearSession,
-                    onClick = { activeSheet = ActiveBottomSheet.YearSession },
-                    modifier = Modifier.testTag("form_year_input")
-                )
+            // ধাপ ৩: ৮টি বিষয়ের নাম ও নম্বর (দ্রুত এন্ট্রি)
+            Card(
+                colors = CardDefaults.cardColors(containerColor = DarkCardBg),
+                shape = RoundedCornerShape(16.dp),
+                border = BorderStroke(1.2.dp, DarkBorder),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(12.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "৩. বিষয়ের নাম ও নম্বর (সরাসরি টাইপ বা বাছাই করুন)",
+                        fontSize = 15.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = DarkGreenAccent
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Text(
+                            text = "সব পাস নম্বর:",
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = DarkHint
+                        )
+                        PASS_MARK_OPTIONS.forEach { passOpt ->
+                            val allMatch = subjectRows.all { it.passMark == passOpt }
+                            Surface(
+                                color = if (allMatch) DarkBorder else DarkScreenBg,
+                                shape = RoundedCornerShape(50),
+                                border = BorderStroke(1.dp, if (allMatch) DarkGreenAccent else DarkBorder),
+                                modifier = Modifier
+                                    .clip(RoundedCornerShape(50))
+                                    .clickable {
+                                        for (i in subjectRows.indices) {
+                                            subjectRows[i] = subjectRows[i].copy(passMark = passOpt)
+                                        }
+                                    }
+                            ) {
+                                Text(
+                                    text = toBn(passOpt),
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (allMatch) DarkGreenAccent else Color.White,
+                                    modifier = Modifier.padding(horizontal = 14.dp, vertical = 6.dp)
+                                )
+                            }
+                        }
+                    }
+                }
             }
-
-            // 5. শিক্ষার্থীর নাম
-            DarkFormCardContainer {
-                SectionFieldTitle("৫. শিক্ষার্থীর নাম")
-                DarkDarkTextField(
-                    value = studentName,
-                    onValueChange = { studentName = it },
-                    placeholderText = "শিক্ষার্থীর নাম লিখুন",
-                    modifier = Modifier.testTag("form_student_name_input")
-                )
-            }
-
-            // 6. রোল নাম্বার
-            DarkFormCardContainer {
-                SectionFieldTitle("৬. রোল নাম্বার")
-                DarkBottomSheetDropdownBox(
-                    value = toBn(rollNumber),
-                    onClick = { activeSheet = ActiveBottomSheet.RollNumber },
-                    modifier = Modifier.testTag("form_roll_input")
-                )
-            }
-
-            // 7. বিষয়ের নাম - 8 Subjects
-            Text(
-                text = "৭. বিষয়ের নাম ও নম্বর (৮টি বিষয়)",
-                fontSize = 18.sp,
-                fontWeight = FontWeight.ExtraBold,
-                color = Color.White,
-                modifier = Modifier.padding(top = 4.dp, start = 2.dp)
-            )
 
             subjectRows.forEachIndexed { idx, row ->
                 val evalSub = liveSummary.evaluatedSubjects.getOrNull(idx)
@@ -406,9 +718,10 @@ fun ResultFormScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                            .padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
+                        // Top line: Subject number badge + [বিষয়ের নাম Dropdown] + Live Grade Pill
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
@@ -416,7 +729,7 @@ fun ResultFormScreen(
                         ) {
                             Text(
                                 text = "বিষয় ${toBn(idx + 1)}",
-                                fontSize = 16.sp,
+                                fontSize = 15.sp,
                                 fontWeight = FontWeight.Bold,
                                 color = DarkGreenAccent
                             )
@@ -430,52 +743,43 @@ fun ResultFormScreen(
                                         fontSize = 13.sp,
                                         fontWeight = FontWeight.Bold,
                                         color = if (evalSub.isPassed) ext.passGreen else ext.failRed,
-                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 3.dp)
                                     )
                                 }
                             }
                         }
 
-                        // Top line: [বিষয়ের নাম Dropdown with Arrow] - Full width
-                        Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text(
-                                text = "বিষয়ের নাম",
-                                fontSize = 14.sp,
-                                fontWeight = FontWeight.SemiBold,
-                                color = Color.White
-                            )
-                            DarkBottomSheetDropdownBox(
-                                value = row.name,
-                                onClick = { activeSheet = ActiveBottomSheet.SubjectName(idx) },
-                                modifier = Modifier.testTag("subject_name_$idx")
-                            )
-                        }
+                        DarkBottomSheetDropdownBox(
+                            value = row.name,
+                            onClick = { activeSheet = ActiveBottomSheet.SubjectName(idx) },
+                            modifier = Modifier.testTag("subject_name_$idx")
+                        )
 
-                        // Below that line: Left [পূর্ণমান] (fixed ১০০), Right [পাস] & [প্রাপ্ত নাম্বার]
+                        // Bottom line: Left [পূর্ণমান ১০০], Middle [পাস Dropdown], Right [প্রাপ্ত নাম্বার: টাইপ + ড্রপডাউন]
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.Bottom
                         ) {
-                            // Left: পূর্ণমান (Non-editable fixed ১০০)
+                            // পূর্ণমান (Always fixed ১০০)
                             Column(
-                                modifier = Modifier.weight(0.85f),
+                                modifier = Modifier.weight(0.78f),
                                 verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(
                                     text = "পূর্ণমান",
-                                    fontSize = 14.sp,
+                                    fontSize = 13.sp,
                                     fontWeight = FontWeight.SemiBold,
-                                    color = Color.White,
+                                    color = DarkHint,
                                     maxLines = 1
                                 )
                                 Surface(
-                                    color = DarkCardBg,
+                                    color = DarkScreenBg,
                                     shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.2.dp, DarkBorder),
+                                    border = BorderStroke(1.dp, DarkBorder),
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .height(52.dp)
+                                        .height(50.dp)
                                 ) {
                                     Box(
                                         contentAlignment = Alignment.Center,
@@ -483,7 +787,7 @@ fun ResultFormScreen(
                                     ) {
                                         Text(
                                             text = "১০০",
-                                            fontSize = 17.sp,
+                                            fontSize = 16.sp,
                                             fontWeight = FontWeight.Bold,
                                             color = DarkGreenAccent,
                                             maxLines = 1
@@ -492,61 +796,66 @@ fun ResultFormScreen(
                                 }
                             }
 
-                            // Right side: Two boxes side by side -> a) পাস  b) প্রাপ্ত নাম্বার
-                            Row(
-                                modifier = Modifier.weight(2.15f),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            // পাস
+                            Column(
+                                modifier = Modifier.weight(0.92f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
-                                // a) পাস
-                                Column(
-                                    modifier = Modifier.weight(0.95f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = "পাস",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color.White,
-                                        maxLines = 1
-                                    )
-                                    DarkBottomSheetDropdownBox(
-                                        value = row.passMark?.let { toBn(it) } ?: "বাছুন",
-                                        isPlaceholder = row.passMark == null,
-                                        onClick = { activeSheet = ActiveBottomSheet.PassMark(idx) },
-                                        compactHorizontalPadding = true,
-                                        modifier = Modifier.testTag("subject_pass_$idx")
-                                    )
-                                }
+                                Text(
+                                    text = "পাস",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = DarkHint,
+                                    maxLines = 1
+                                )
+                                DarkBottomSheetDropdownBox(
+                                    value = row.passMark?.let { toBn(it) } ?: "বাছুন",
+                                    isPlaceholder = row.passMark == null,
+                                    onClick = { activeSheet = ActiveBottomSheet.PassMark(idx) },
+                                    compactHorizontalPadding = true,
+                                    modifier = Modifier.testTag("subject_pass_$idx")
+                                )
+                            }
 
-                                // b) প্রাপ্ত নাম্বার
-                                Column(
-                                    modifier = Modifier.weight(1.2f),
-                                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                                ) {
-                                    Text(
-                                        text = "প্রাপ্ত নাম্বার",
-                                        fontSize = 14.sp,
-                                        fontWeight = FontWeight.SemiBold,
-                                        color = Color.White,
-                                        maxLines = 1
-                                    )
-                                    DarkBottomSheetDropdownBox(
-                                        value = row.obtainedMarks?.let { toBn(it) } ?: "বাছুন",
-                                        isPlaceholder = row.obtainedMarks == null,
-                                        onClick = { activeSheet = ActiveBottomSheet.ObtainedMarks(idx) },
-                                        compactHorizontalPadding = true,
-                                        modifier = Modifier.testTag("subject_marks_$idx")
-                                    )
-                                }
+                            // প্রাপ্ত নাম্বার (সরাসরি টাইপ + ড্রপডাউন শিট)
+                            Column(
+                                modifier = Modifier.weight(1.35f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "প্রাপ্ত নাম্বার",
+                                    fontSize = 13.sp,
+                                    fontWeight = FontWeight.SemiBold,
+                                    color = DarkHint,
+                                    maxLines = 1
+                                )
+                                HybridMarkInputBox(
+                                    mark = row.obtainedMarks,
+                                    onMarkChange = { newMark ->
+                                        subjectRows[idx] = subjectRows[idx].copy(obtainedMarks = newMark)
+                                    },
+                                    onOpenSheet = { activeSheet = ActiveBottomSheet.ObtainedMarks(idx) },
+                                    imeAction = if (idx < 7) ImeAction.Next else ImeAction.Done,
+                                    onNextOrDone = {
+                                        if (idx < 7) {
+                                            subjectFocusRequesters[idx + 1].requestFocus()
+                                        } else {
+                                            keyboardController?.hide()
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .focusRequester(subjectFocusRequesters[idx])
+                                        .testTag("subject_marks_$idx")
+                                )
                             }
                         }
                     }
                 }
             }
 
-            Spacer(Modifier.height(6.dp))
+            Spacer(Modifier.height(4.dp))
 
-            // 8. Full-width Big Green Save Button
+            // সংরক্ষণ করুন বাটন
             Button(
                 onClick = {
                     if (studentName.isBlank()) {
@@ -594,7 +903,7 @@ fun ResultFormScreen(
         }
     }
 
-    // Bottom Sliding Sheets (ALL DARK)
+    // ALL Bottom Sliding Sheets (Dark Green-Black Theme)
     val sheet = activeSheet
     if (sheet != null) {
         val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
@@ -603,7 +912,6 @@ fun ResultFormScreen(
             sheetState = sheetState,
             containerColor = DarkScreenBg,
             dragHandle = {
-                // Custom Light Green Handle
                 Surface(
                     color = DarkGreenAccent,
                     shape = RoundedCornerShape(50),
@@ -641,6 +949,7 @@ fun ResultFormScreen(
                         title = "সাল / সেশন নির্বাচন করুন",
                         options = YEAR_OPTIONS,
                         selected = yearSession,
+                        displayMapper = { toBn(it) },
                         onSelect = {
                             yearSession = it
                             activeSheet = null
@@ -654,6 +963,13 @@ fun ResultFormScreen(
                         numbers = ROLL_OPTIONS,
                         selected = rollNumber,
                         formatNumber = { toBn(it) },
+                        ranges = listOf(
+                            "১–১০০" to (1..100),
+                            "১০১–২০০" to (101..200),
+                            "২০১–৩০০" to (201..300),
+                            "৩০১–৪০০" to (301..400),
+                            "৪০১–৫০০" to (401..500)
+                        ),
                         onSelect = { picked ->
                             rollNumber = picked
                             rollManuallyEdited = true
@@ -705,6 +1021,13 @@ fun ResultFormScreen(
                         numbers = OBTAINED_MARK_OPTIONS,
                         selected = subjectRows[idx].obtainedMarks,
                         formatNumber = { toBn(it) },
+                        ranges = listOf(
+                            "সব (১–১০০)" to (1..100),
+                            "৭৬–১০০" to (76..100),
+                            "৫১–৭৫" to (51..75),
+                            "২৬–৫০" to (26..50),
+                            "১–২৫" to (1..25)
+                        ),
                         onSelect = { picked ->
                             subjectRows[idx] = subjectRows[idx].copy(obtainedMarks = picked)
                             activeSheet = null
@@ -717,21 +1040,115 @@ fun ResultFormScreen(
 }
 
 @Composable
-private fun DarkFormCardContainer(content: @Composable () -> Unit) {
-    Card(
-        colors = CardDefaults.cardColors(containerColor = DarkCardBg),
-        shape = RoundedCornerShape(16.dp),
-        border = BorderStroke(1.2.dp, DarkBorder),
-        elevation = CardDefaults.cardElevation(defaultElevation = 1.dp),
-        modifier = Modifier.fillMaxWidth()
+private fun RollStepButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    contentDescription: String,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    Surface(
+        color = DarkScreenBg,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.2.dp, if (enabled) DarkBorder else DarkBorder.copy(alpha = 0.35f)),
+        modifier = Modifier
+            .size(50.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(enabled = enabled, onClick = onClick)
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = icon,
+                contentDescription = contentDescription,
+                tint = if (enabled) DarkGreenAccent else DarkHint.copy(alpha = 0.4f),
+                modifier = Modifier.size(22.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun HybridMarkInputBox(
+    mark: Int?,
+    onMarkChange: (Int?) -> Unit,
+    onOpenSheet: () -> Unit,
+    imeAction: ImeAction,
+    onNextOrDone: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val rawDigits = mark?.toString() ?: ""
+
+    Surface(
+        color = DarkScreenBg,
+        shape = RoundedCornerShape(12.dp),
+        border = BorderStroke(1.3.dp, if (mark != null) DarkGreenAccent.copy(alpha = 0.7f) else DarkBorder),
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(50.dp)
+    ) {
+        Row(
+            modifier = Modifier.fillMaxSize(),
+            verticalAlignment = Alignment.CenterVertically
         ) {
-            content()
+            Box(
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 10.dp),
+                contentAlignment = Alignment.CenterStart
+            ) {
+                if (rawDigits.isEmpty()) {
+                    Text(
+                        text = "০–১০০",
+                        fontSize = 15.sp,
+                        color = DarkHint,
+                        maxLines = 1
+                    )
+                }
+                BasicTextField(
+                    value = rawDigits,
+                    onValueChange = { incoming ->
+                        val digitsOnly = DigitHelper.toEnglishDigits(incoming).filter { it.isDigit() }
+                        if (digitsOnly.isEmpty()) {
+                            onMarkChange(null)
+                        } else {
+                            val parsed = digitsOnly.take(3).toIntOrNull()
+                            if (parsed != null && parsed <= 100) {
+                                onMarkChange(parsed)
+                            }
+                        }
+                    },
+                    singleLine = true,
+                    textStyle = TextStyle(
+                        fontSize = 17.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White
+                    ),
+                    cursorBrush = SolidColor(DarkGreenAccent),
+                    visualTransformation = BanglaDigitsVisualTransformation,
+                    keyboardOptions = KeyboardOptions(
+                        keyboardType = KeyboardType.Number,
+                        imeAction = imeAction
+                    ),
+                    keyboardActions = KeyboardActions(
+                        onNext = { onNextOrDone() },
+                        onDone = { onNextOrDone() }
+                    ),
+                    modifier = modifier.fillMaxWidth()
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .size(48.dp)
+                    .clip(RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp))
+                    .clickable(onClick = onOpenSheet),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Filled.KeyboardArrowDown,
+                    contentDescription = "তালিকা থেকে বাছুন",
+                    tint = DarkGreenAccent,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
         }
     }
 }
@@ -740,7 +1157,7 @@ private fun DarkFormCardContainer(content: @Composable () -> Unit) {
 private fun SectionFieldTitle(title: String) {
     Text(
         text = title,
-        fontSize = 16.sp,
+        fontSize = 15.sp,
         fontWeight = FontWeight.Bold,
         color = Color.White
     )
@@ -751,6 +1168,8 @@ private fun DarkDarkTextField(
     value: String,
     onValueChange: (String) -> Unit,
     placeholderText: String,
+    imeAction: ImeAction = ImeAction.Done,
+    onNext: (() -> Unit)? = null,
     modifier: Modifier = Modifier
 ) {
     OutlinedTextField(
@@ -765,12 +1184,14 @@ private fun DarkDarkTextField(
         },
         textStyle = TextStyle(fontSize = 17.sp, fontWeight = FontWeight.SemiBold, color = Color.White),
         singleLine = true,
+        keyboardOptions = KeyboardOptions(imeAction = imeAction),
+        keyboardActions = KeyboardActions(onNext = { onNext?.invoke() }),
         shape = RoundedCornerShape(12.dp),
         colors = OutlinedTextFieldDefaults.colors(
             focusedBorderColor = DarkGreenAccent,
             unfocusedBorderColor = DarkBorder,
-            focusedContainerColor = DarkCardBg,
-            unfocusedContainerColor = DarkCardBg,
+            focusedContainerColor = DarkScreenBg,
+            unfocusedContainerColor = DarkScreenBg,
             cursorColor = DarkGreenAccent,
             focusedTextColor = Color.White,
             unfocusedTextColor = Color.White
@@ -788,12 +1209,12 @@ private fun DarkBottomSheetDropdownBox(
     compactHorizontalPadding: Boolean = false
 ) {
     Surface(
-        color = DarkCardBg,
+        color = DarkScreenBg,
         shape = RoundedCornerShape(12.dp),
         border = BorderStroke(1.3.dp, DarkBorder),
         modifier = modifier
             .fillMaxWidth()
-            .heightIn(min = 52.dp)
+            .heightIn(min = 50.dp)
             .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
     ) {
@@ -809,7 +1230,7 @@ private fun DarkBottomSheetDropdownBox(
         ) {
             Text(
                 text = value,
-                fontSize = if (compactHorizontalPadding) 16.sp else 17.sp,
+                fontSize = if (compactHorizontalPadding) 15.sp else 17.sp,
                 fontWeight = if (isPlaceholder) FontWeight.Medium else FontWeight.SemiBold,
                 color = if (isPlaceholder) DarkHint else Color.White,
                 maxLines = 1,
@@ -821,7 +1242,7 @@ private fun DarkBottomSheetDropdownBox(
                 imageVector = Icons.Filled.KeyboardArrowDown,
                 contentDescription = "Select",
                 tint = DarkGreenAccent,
-                modifier = Modifier.size(24.dp)
+                modifier = Modifier.size(22.dp)
             )
         }
     }
@@ -832,6 +1253,7 @@ private fun DarkStringListSheetContent(
     title: String,
     options: List<String>,
     selected: String,
+    displayMapper: (String) -> String = { it },
     onSelect: (String) -> Unit,
     headerActionLabel: String? = null,
     onHeaderAction: (() -> Unit)? = null
@@ -916,7 +1338,7 @@ private fun DarkStringListSheetContent(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = item,
+                            text = displayMapper(item),
                             fontSize = 17.sp,
                             fontWeight = if (isSelected) FontWeight.Bold else FontWeight.SemiBold,
                             color = Color.White
@@ -942,8 +1364,18 @@ private fun DarkNumberGridSheetContent(
     numbers: List<Int>,
     selected: Int?,
     formatNumber: (Int) -> String,
+    ranges: List<Pair<String, IntRange>> = emptyList(),
     onSelect: (Int) -> Unit
 ) {
+    var selectedRangeIndex by remember(ranges) { mutableIntStateOf(0) }
+    val filteredNumbers = remember(numbers, ranges, selectedRangeIndex) {
+        if (ranges.isEmpty()) numbers
+        else {
+            val activeRange = ranges[selectedRangeIndex].second
+            numbers.filter { it in activeRange }
+        }
+    }
+
     Column(
         modifier = Modifier
             .fillMaxWidth()
@@ -958,17 +1390,46 @@ private fun DarkNumberGridSheetContent(
             color = Color.White,
             modifier = Modifier.padding(horizontal = 20.dp, vertical = 10.dp)
         )
+        if (ranges.isNotEmpty()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .horizontalScroll(rememberScrollState())
+                    .padding(horizontal = 14.dp, vertical = 6.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                ranges.forEachIndexed { idx, (label, _) ->
+                    val active = idx == selectedRangeIndex
+                    Surface(
+                        color = if (active) DarkBorder else DarkCardBg,
+                        shape = RoundedCornerShape(50),
+                        border = BorderStroke(1.dp, if (active) DarkGreenAccent else DarkBorder),
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(50))
+                            .clickable { selectedRangeIndex = idx }
+                    ) {
+                        Text(
+                            text = label,
+                            fontSize = 13.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = if (active) DarkGreenAccent else Color.White,
+                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                        )
+                    }
+                }
+            }
+        }
         HorizontalDivider(color = DarkBorder)
         LazyVerticalGrid(
             columns = GridCells.Fixed(5),
             modifier = Modifier
                 .fillMaxWidth()
-                .heightIn(max = 420.dp),
+                .heightIn(max = 400.dp),
             contentPadding = PaddingValues(14.dp),
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            items(numbers) { num ->
+            items(filteredNumbers) { num ->
                 val isSelected = num == selected
                 Surface(
                     color = if (isSelected) DarkBorder else DarkCardBg,

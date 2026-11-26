@@ -36,16 +36,17 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Backspace
-import androidx.compose.material.icons.filled.AutoAwesome
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Clear
 import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Dialpad
+import androidx.compose.material.icons.filled.EditNote
 import androidx.compose.material.icons.filled.Functions
 import androidx.compose.material.icons.filled.Keyboard
+import androidx.compose.material.icons.filled.Science
 import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +59,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.minimumInteractiveComponentSize
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
@@ -71,6 +73,7 @@ import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalHapticFeedback
@@ -82,6 +85,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.core.AppLanguage
@@ -96,11 +100,20 @@ import com.example.ui.theme.JetBrainsMonoFontFamily
 import com.example.ui.theme.LocalMsRsColors
 import kotlinx.coroutines.launch
 
+private enum class CalcPadTab {
+    BASIC,
+    SCIENTIFIC,
+    FORMULAS
+}
+
 private data class MathQuickAction(
     val label: String,
-    val insertText: String,
-    val replaceAll: Boolean = false,
-    val isCommand: Boolean = false
+    val insertText: String
+)
+
+private val SMART_FUNCTION_TOKENS = listOf(
+    "asin(", "acos(", "atan(", "sin(", "cos(", "tan(",
+    "log(", "ln(", "√(", "∛(", " ) "
 )
 
 @Composable
@@ -124,18 +137,29 @@ fun CalculatorSolverScreen(
     val keyboardController = LocalSoftwareKeyboardController.current
     val haptic = LocalHapticFeedback.current
     val clipboardManager = LocalClipboardManager.current
+    val isBn = lang == AppLanguage.BANGLA
 
-    var useBanglaDigits by remember(lang) { mutableStateOf(lang == AppLanguage.BANGLA) }
+    var useBanglaDigits by remember(lang) { mutableStateOf(isBn) }
     var useKeyboardInput by remember { mutableStateOf(false) }
+    var activePadTab by remember { mutableStateOf(CalcPadTab.BASIC) }
+    var activeFormulaSheet by remember { mutableStateOf<CurriculumFormulaType?>(null) }
+
     var expression by remember { mutableStateOf("") }
     var lastSolution by remember { mutableStateOf<MathSolveResult.Success?>(null) }
     var lastSavedId by remember { mutableStateOf<Long?>(null) }
+    var lastNumericAns by remember { mutableStateOf<String?>(null) }
+    var justSolved by remember { mutableStateOf(false) }
     val sessionHistory = remember { mutableStateListOf<String>() }
+
+    val exprHorizontalScroll = rememberScrollState()
 
     fun display(s: String): String =
         if (useBanglaDigits) DigitHelper.toBanglaDigits(s) else DigitHelper.toEnglishDigits(s)
 
-    // Non-persisted live preview while typing
+    LaunchedEffect(expression) {
+        exprHorizontalScroll.animateScrollTo(exprHorizontalScroll.maxValue)
+    }
+
     val livePreview = remember(expression, useBanglaDigits, lang) {
         if (expression.isBlank()) {
             null
@@ -156,6 +180,11 @@ fun CalculatorSolverScreen(
             { savedId, success ->
                 lastSavedId = savedId
                 lastSolution = success
+                justSolved = true
+                val engAns = DigitHelper.toEnglishDigits(success.answerText).trim()
+                if (Regex("""^-?\d+(?:\.\d+)?$""").matches(engAns)) {
+                    lastNumericAns = engAns
+                }
                 val trimmed = exprToSolve.trim()
                 sessionHistory.remove(trimmed)
                 sessionHistory.add(0, trimmed)
@@ -173,71 +202,53 @@ fun CalculatorSolverScreen(
         )
     }
 
-    val quickSymbols = remember(lang, useBanglaDigits) {
-        val isBn = lang == AppLanguage.BANGLA
-        listOf(
-            MathQuickAction(if (isBn) "লসাগু" else "LCM", if (isBn) "লসাগু " else "LCM ", replaceAll = true, isCommand = true),
-            MathQuickAction(if (isBn) "গসাগু" else "GCD", if (isBn) "গসাগু " else "GCD ", replaceAll = true, isCommand = true),
-            MathQuickAction(if (isBn) "মৌলিক" else "Prime", if (isBn) "মৌলিক উৎপাদক " else "Prime ", replaceAll = true, isCommand = true),
-            MathQuickAction(if (isBn) "মুনাফা" else "Interest", if (isBn) "মুনাফা P=" else "Interest P=", replaceAll = true, isCommand = true),
-            MathQuickAction(if (isBn) "ক্ষেত্রফল" else "Area", if (isBn) "ক্ষেত্রফল " else "Area ", replaceAll = true, isCommand = true),
-            MathQuickAction(if (isBn) "মধ্যক" else "Median", if (isBn) "মধ্যক " else "Median ", replaceAll = true, isCommand = true),
-            MathQuickAction(if (isBn) "গড়" else "AVG", if (isBn) "গড় " else "AVG ", replaceAll = true, isCommand = true),
-            MathQuickAction(if (isBn) "এর %" else "% of", if (isBn) " এর " else "% of ", isCommand = true),
-            MathQuickAction("x", "x"),
-            MathQuickAction("=", "="),
-            MathQuickAction("√", "√"),
-            MathQuickAction("²", "²"),
-            MathQuickAction("^", "^"),
-            MathQuickAction("%", "%"),
-            MathQuickAction("/", "/"),
-            MathQuickAction(",", ", "),
-            MathQuickAction("!", "!"),
-            MathQuickAction("π", "π"),
-            MathQuickAction("∛", "∛"),
-            MathQuickAction(") (", " ) ")
-        )
+    fun smartBackspace() {
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        justSolved = false
+        if (expression.isEmpty()) return
+        val matchedToken = SMART_FUNCTION_TOKENS.firstOrNull { expression.endsWith(it) }
+        expression = if (matchedToken != null) {
+            expression.dropLast(matchedToken.length)
+        } else {
+            expression.dropLast(1)
+        }
     }
 
-    val samplePresets = remember(lang, useBanglaDigits) {
-        if (lang == AppLanguage.BANGLA) {
-            listOf(
-                display("2x+5=15"),
-                display("x²-5x+6=0"),
-                display("1/2 + 3/4"),
-                display("200 এর 15%"),
-                display("লসাগু 12, 18, 24"),
-                display("গসাগু 24, 36, 60"),
-                display("মৌলিক উৎপাদক 60"),
-                display("মুনাফা P=5000 n=3 r=5"),
-                display("ক্ষেত্রফল 12, 8"),
-                display("মধ্যক 12, 15, 10, 18, 20"),
-                display("√144 + 5² - 3!"),
-                display("2 ) 6 (")
-            )
-        } else {
-            listOf(
-                display("2x+5=15"),
-                display("x²-5x+6=0"),
-                display("1/2 + 3/4"),
-                display("15% of 200"),
-                display("LCM 12, 18, 24"),
-                display("GCD 24, 36, 60"),
-                display("Prime 60"),
-                display("Interest P=5000 n=3 r=5"),
-                display("Area 12, 8"),
-                display("Median 12, 15, 10, 18, 20"),
-                display("√144 + 5² - 3!"),
-                display("2 ) 6 (")
-            )
+    fun appendKeypadToken(token: String, isOperator: Boolean = false) {
+        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+        if (justSolved) {
+            justSolved = false
+            val ans = lastNumericAns
+            if (isOperator && ans != null) {
+                expression = display(ans) + token
+                return
+            } else if (!isOperator) {
+                expression = token
+                return
+            }
         }
+        expression += token
+    }
+
+    val basicQuickRow = remember {
+        listOf(
+            MathQuickAction("x", "x"),
+            MathQuickAction("=", "="),
+            MathQuickAction(",", ", "),
+            MathQuickAction("√", "√("),
+            MathQuickAction("x²", "²"),
+            MathQuickAction("%", "%"),
+            MathQuickAction("/", "/"),
+            MathQuickAction("π", "π"),
+            MathQuickAction("^", "^"),
+            MathQuickAction(") (", " ) ")
+        )
     }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         snackbarHost = { SnackbarHost(snackbarHostState) },
         topBar = {
-            // Integrated Emerald Gradient Top Header + Sleek Mode Pill Bar
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -247,12 +258,12 @@ fun CalculatorSolverScreen(
                         )
                     )
                     .statusBarsPadding()
-                    .padding(bottom = 10.dp)
+                    .padding(bottom = 8.dp)
             ) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 8.dp, vertical = 5.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     IconButton(
@@ -268,72 +279,31 @@ fun CalculatorSolverScreen(
                     Column(modifier = Modifier.weight(1f)) {
                         Text(
                             text = strings.calculatorSolverTitle,
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.ExtraBold,
                             color = Color.White,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                         Text(
-                            text = if (lang == AppLanguage.BANGLA) "খাতার নিয়মে ধাপে ধাপে সমাধান" else "Step-by-Step Khata Solutions",
+                            text = if (isBn) "শিশু–১০ম শ্রেণি • খাতার নিয়মে পূর্ণ সমাধান" else "Play–Class 10 • Step-by-Step Khata",
                             style = MaterialTheme.typography.labelSmall,
                             color = ext.goldBright,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
                     }
-                    // Quick Mode Switch Action in Top Bar
-                    Surface(
-                        color = Color.White.copy(alpha = 0.16f),
-                        shape = CircleShape,
-                        modifier = Modifier
-                            .clip(CircleShape)
-                            .clickable {
-                                haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                useKeyboardInput = !useKeyboardInput
-                            }
-                            .testTag("calc_input_mode_action")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(5.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (useKeyboardInput) Icons.Filled.Dialpad else Icons.Filled.Keyboard,
-                                contentDescription = if (useKeyboardInput) strings.calcKeypadToggle else strings.calcKeyboardToggle,
-                                tint = Color.White,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Text(
-                                text = if (useKeyboardInput) strings.calcKeypadToggle else strings.calcKeyboardToggle,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = Color.White,
-                                maxLines = 1
-                            )
-                        }
-                    }
-                }
 
-                // Segmented Digit Toggle + Session History Strip
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 14.dp)
-                        .horizontalScroll(rememberScrollState()),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    // Segmented Bangla / English Digit Pill
+                    // 1-Tap Bangla (১-০) / English (1-0) Digit Toggle
                     Surface(
-                        color = Color.Black.copy(alpha = 0.22f),
+                        color = Color.Black.copy(alpha = 0.25f),
                         shape = RoundedCornerShape(50),
-                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.22f))
+                        border = BorderStroke(1.dp, Color.White.copy(alpha = 0.25f)),
+                        modifier = Modifier.padding(end = 6.dp)
                     ) {
                         Row(modifier = Modifier.padding(3.dp)) {
                             DigitSegmentPill(
-                                label = "বাংলা (০-৯)",
+                                label = "১-০ বাং",
                                 selected = useBanglaDigits,
                                 onClick = {
                                     useBanglaDigits = true
@@ -342,43 +312,13 @@ fun CalculatorSolverScreen(
                                 modifier = Modifier.testTag("calc_bangla_toggle")
                             )
                             DigitSegmentPill(
-                                label = "EN (0-9)",
+                                label = "1-0 EN",
                                 selected = !useBanglaDigits,
                                 onClick = {
                                     useBanglaDigits = false
                                     expression = DigitHelper.toEnglishDigits(expression)
                                 },
                                 modifier = Modifier.testTag("calc_english_toggle")
-                            )
-                        }
-                    }
-
-                    // Input Mode Chip
-                    Surface(
-                        color = if (useKeyboardInput) ext.goldBright else Color.White.copy(alpha = 0.16f),
-                        shape = RoundedCornerShape(50),
-                        modifier = Modifier
-                            .clip(RoundedCornerShape(50))
-                            .clickable { useKeyboardInput = !useKeyboardInput }
-                            .testTag("calc_input_mode_toggle")
-                    ) {
-                        Row(
-                            modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Icon(
-                                imageVector = if (useKeyboardInput) Icons.Filled.Dialpad else Icons.Filled.Keyboard,
-                                contentDescription = null,
-                                tint = if (useKeyboardInput) Color(0xFF1A281E) else Color.White,
-                                modifier = Modifier.size(15.dp)
-                            )
-                            Text(
-                                text = if (useKeyboardInput) strings.calcKeypadToggle else strings.calcKeyboardToggle,
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold,
-                                color = if (useKeyboardInput) Color(0xFF1A281E) else Color.White,
-                                maxLines = 1
                             )
                         }
                     }
@@ -392,17 +332,255 @@ fun CalculatorSolverScreen(
                 .padding(innerPadding)
                 .navigationBarsPadding()
                 .imePadding(),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
-            // Ruled Khata Display + Live Answer + Step-by-Step Solution Card
+            // 1. Clean Precision Digital Display Card (Separate from lined Khata)
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(start = 12.dp, end = 12.dp, top = 6.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shape = RoundedCornerShape(20.dp),
+                shadowElevation = 2.dp,
+                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.45f))
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    // Display Utility Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Surface(
+                            color = if (useKeyboardInput) ext.goldContainer else MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.72f),
+                            shape = RoundedCornerShape(50),
+                            border = BorderStroke(
+                                1.dp,
+                                if (useKeyboardInput) ext.onGoldContainer.copy(alpha = 0.3f)
+                                else MaterialTheme.colorScheme.primary.copy(alpha = 0.28f)
+                            ),
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(50))
+                                .clickable {
+                                    haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                    useKeyboardInput = !useKeyboardInput
+                                }
+                                .testTag("calc_input_mode_toggle")
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                            ) {
+                                Icon(
+                                    imageVector = if (useKeyboardInput) Icons.Filled.Dialpad else Icons.Filled.Keyboard,
+                                    contentDescription = null,
+                                    tint = if (useKeyboardInput) ext.onGoldContainer else MaterialTheme.colorScheme.onPrimaryContainer,
+                                    modifier = Modifier.size(14.dp)
+                                )
+                                Text(
+                                    text = if (useKeyboardInput) strings.calcKeypadToggle else strings.calcKeyboardToggle,
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (useKeyboardInput) ext.onGoldContainer else MaterialTheme.colorScheme.onPrimaryContainer
+                                )
+                            }
+                        }
+
+                        Row(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            if (lastNumericAns != null) {
+                                Surface(
+                                    color = ext.solverBlueContainer,
+                                    shape = RoundedCornerShape(50),
+                                    border = BorderStroke(1.dp, ext.solverBlueStart.copy(alpha = 0.28f)),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable { appendKeypadToken(display(lastNumericAns!!)) }
+                                ) {
+                                    Text(
+                                        text = "Ans: ${display(lastNumericAns!!)}",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ext.onSolverBlueContainer,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                            Surface(
+                                color = MaterialTheme.colorScheme.surfaceVariant,
+                                shape = RoundedCornerShape(50)
+                            ) {
+                                Text(
+                                    text = "DEG",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    fontWeight = FontWeight.Bold,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 4.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    // Session History Chips
+                    if (sessionHistory.isNotEmpty()) {
+                        LazyRow(
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            contentPadding = PaddingValues(vertical = 1.dp)
+                        ) {
+                            items(sessionHistory) { prev ->
+                                Surface(
+                                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f),
+                                    shape = RoundedCornerShape(50),
+                                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)),
+                                    modifier = Modifier
+                                        .clip(RoundedCornerShape(50))
+                                        .clickable {
+                                            justSolved = false
+                                            expression = display(prev)
+                                        }
+                                ) {
+                                    Text(
+                                        text = display(prev),
+                                        style = MaterialTheme.typography.labelSmall,
+                                        fontWeight = FontWeight.SemiBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+
+                    if (useKeyboardInput) {
+                        OutlinedTextField(
+                            value = expression,
+                            onValueChange = {
+                                justSolved = false
+                                expression = it
+                            },
+                            placeholder = {
+                                Text(
+                                    text = strings.calcInputHint,
+                                    style = MaterialTheme.typography.bodySmall,
+                                    maxLines = 2,
+                                    overflow = TextOverflow.Ellipsis
+                                )
+                            },
+                            trailingIcon = {
+                                if (expression.isNotEmpty()) {
+                                    IconButton(onClick = {
+                                        expression = ""
+                                        lastSolution = null
+                                        lastSavedId = null
+                                        justSolved = false
+                                    }) {
+                                        Icon(Icons.Filled.Clear, contentDescription = "Clear")
+                                    }
+                                }
+                            },
+                            textStyle = TextStyle(
+                                fontSize = 20.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = ext.solverBlueStart
+                            ),
+                            colors = OutlinedTextFieldDefaults.colors(
+                                focusedContainerColor = MaterialTheme.colorScheme.background,
+                                unfocusedContainerColor = MaterialTheme.colorScheme.background,
+                                focusedBorderColor = MaterialTheme.colorScheme.primary,
+                                unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                            ),
+                            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+                            keyboardActions = KeyboardActions(onDone = { solveNow() }),
+                            shape = RoundedCornerShape(14.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("calc_keyboard_input")
+                        )
+
+                        Button(
+                            onClick = { solveNow() },
+                            enabled = expression.isNotBlank(),
+                            shape = RoundedCornerShape(14.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = Color.White
+                            ),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(48.dp)
+                                .testTag("calc_solve_now_btn")
+                        ) {
+                            Icon(Icons.Filled.Functions, contentDescription = null)
+                            Spacer(Modifier.width(6.dp))
+                            Text(strings.solveNow, fontWeight = FontWeight.Bold, fontSize = 16.sp)
+                        }
+                    } else {
+                        // Digital Expression + Live Preview Line
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalAlignment = Alignment.End
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .horizontalScroll(exprHorizontalScroll),
+                                contentAlignment = Alignment.CenterEnd
+                            ) {
+                                Text(
+                                    text = if (expression.isEmpty()) display("0") else display(expression),
+                                    fontSize = when {
+                                        expression.length > 22 -> 24.sp
+                                        expression.length > 14 -> 29.sp
+                                        else -> 35.sp
+                                    },
+                                    lineHeight = 40.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = if (expression.isEmpty()) Color(0xFF8AA093) else ext.solverBlueStart,
+                                    maxLines = 1,
+                                    textAlign = TextAlign.End,
+                                    modifier = Modifier.testTag("calc_display_text")
+                                )
+                            }
+
+                            AnimatedVisibility(
+                                visible = livePreview != null && expression.isNotBlank() && lastSolution?.originalInput != display(expression),
+                                enter = fadeIn() + expandVertically(),
+                                exit = fadeOut() + shrinkVertically()
+                            ) {
+                                if (livePreview != null) {
+                                    Text(
+                                        text = "= ${display(livePreview)}",
+                                        style = MaterialTheme.typography.titleMedium,
+                                        fontWeight = FontWeight.ExtraBold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.padding(top = 2.dp)
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
+            // 2. Ruled Khata Solution Paper (Middle Expandable Workspace)
             Surface(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(1f)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = 12.dp),
                 color = ext.khataPaper,
-                shape = RoundedCornerShape(22.dp),
-                shadowElevation = 2.dp,
+                shape = RoundedCornerShape(20.dp),
+                shadowElevation = 1.dp,
                 border = BorderStroke(1.2.dp, ext.khataLine)
             ) {
                 val khataLineColor = ext.khataLine
@@ -411,389 +589,235 @@ fun CalculatorSolverScreen(
                     modifier = Modifier
                         .fillMaxSize()
                         .drawBehind {
-                            val gap = 30.dp.toPx()
+                            val gap = 28.dp.toPx()
                             var y = gap
                             while (y < size.height) {
                                 drawLine(
-                                    color = khataLineColor.copy(alpha = 0.72f),
+                                    color = khataLineColor.copy(alpha = 0.65f),
                                     start = Offset(0f, y),
                                     end = Offset(size.width, y),
                                     strokeWidth = 1.dp.toPx()
                                 )
                                 y += gap
                             }
-                            val marginX = 28.dp.toPx()
+                            val marginX = 26.dp.toPx()
                             drawLine(
-                                color = khataMarginColor.copy(alpha = 0.55f),
+                                color = khataMarginColor.copy(alpha = 0.5f),
                                 start = Offset(marginX, 0f),
                                 end = Offset(marginX, size.height),
                                 strokeWidth = 1.4.dp.toPx()
                             )
                         }
                 ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .verticalScroll(rememberScrollState())
-                            .padding(start = 38.dp, end = 14.dp, top = 12.dp, bottom = 14.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        // Session recent chips if available
-                        if (sessionHistory.isNotEmpty()) {
-                            LazyRow(
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                contentPadding = PaddingValues(vertical = 2.dp)
+                    val sol = lastSolution
+                    val savedId = lastSavedId
+                    if (sol != null && savedId != null) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .verticalScroll(rememberScrollState())
+                                .padding(start = 34.dp, end = 12.dp, top = 10.dp, bottom = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            // Khata Notebook Lines
+                            Surface(
+                                color = Color.White.copy(alpha = 0.94f),
+                                shape = RoundedCornerShape(14.dp),
+                                border = BorderStroke(1.dp, ext.khataLine),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                items(sessionHistory) { prev ->
-                                    Surface(
-                                        color = Color.White.copy(alpha = 0.85f),
-                                        shape = RoundedCornerShape(50),
-                                        border = BorderStroke(1.dp, ext.khataLine),
-                                        modifier = Modifier
-                                            .clip(RoundedCornerShape(50))
-                                            .clickable {
-                                                expression = display(prev)
-                                            }
-                                    ) {
+                                Column(
+                                    modifier = Modifier.padding(12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(3.dp)
+                                ) {
+                                    Text(
+                                        text = if (isBn) "খাতার সমাধান:" else "Khata Work:",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = ext.solverBlueStart
+                                    )
+                                    sol.khataLines.forEach { line ->
                                         Text(
-                                            text = display(prev),
-                                            style = MaterialTheme.typography.labelSmall,
-                                            fontWeight = FontWeight.SemiBold,
-                                            color = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 4.dp)
+                                            text = display(line),
+                                            fontFamily = JetBrainsMonoFontFamily,
+                                            style = MaterialTheme.typography.titleMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = Color(0xFF112419)
                                         )
                                     }
                                 }
                             }
-                        }
 
-                        if (useKeyboardInput) {
-                            OutlinedTextField(
-                                value = expression,
-                                onValueChange = { expression = it },
-                                placeholder = {
-                                    Text(
-                                        text = strings.calcInputHint,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        maxLines = 2,
-                                        overflow = TextOverflow.Ellipsis
-                                    )
-                                },
-                                trailingIcon = {
-                                    if (expression.isNotEmpty()) {
-                                        IconButton(onClick = {
-                                            expression = ""
-                                            lastSolution = null
-                                            lastSavedId = null
-                                        }) {
-                                            Icon(Icons.Filled.Clear, contentDescription = "Clear")
-                                        }
-                                    }
-                                },
-                                textStyle = TextStyle(
-                                    fontSize = 20.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = ext.solverBlueStart
-                                ),
-                                colors = OutlinedTextFieldDefaults.colors(
-                                    focusedContainerColor = Color.White.copy(alpha = 0.92f),
-                                    unfocusedContainerColor = Color.White.copy(alpha = 0.85f),
-                                    focusedBorderColor = MaterialTheme.colorScheme.primary,
-                                    unfocusedBorderColor = ext.khataLine
-                                ),
-                                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
-                                keyboardActions = KeyboardActions(onDone = { solveNow() }),
+                            // Answer Highlight + Copy & Khata PDF
+                            Surface(
+                                color = MaterialTheme.colorScheme.primaryContainer,
                                 shape = RoundedCornerShape(14.dp),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .testTag("calc_keyboard_input")
-                            )
-
-                            Button(
-                                onClick = { solveNow() },
-                                enabled = expression.isNotBlank(),
-                                shape = RoundedCornerShape(14.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = Color.White
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .height(48.dp)
-                                    .testTag("calc_solve_now_btn")
+                                border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Icon(Icons.Filled.Functions, contentDescription = null)
-                                Spacer(Modifier.width(6.dp))
-                                Text(strings.solveNow, fontWeight = FontWeight.Bold, fontSize = 16.sp)
-                            }
-                        } else {
-                            // Keypad Mode Display
-                            Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalAlignment = Alignment.End
-                            ) {
-                                Text(
-                                    text = if (expression.isEmpty()) display("0") else display(expression),
-                                    fontSize = if (expression.length > 18) 24.sp else 32.sp,
-                                    lineHeight = 36.sp,
-                                    fontWeight = FontWeight.ExtraBold,
-                                    color = if (expression.isEmpty()) Color(0xFF8AA093) else ext.solverBlueStart,
-                                    textAlign = TextAlign.End,
+                                Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .testTag("calc_display_text")
-                                )
-
-                                // Live Instant Answer Preview Pill before pressing '='
-                                AnimatedVisibility(
-                                    visible = livePreview != null && expression.isNotBlank() && lastSolution?.originalInput != display(expression),
-                                    enter = fadeIn() + expandVertically(),
-                                    exit = fadeOut() + shrinkVertically()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
-                                    if (livePreview != null) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = strings.finalAnswer,
+                                            style = MaterialTheme.typography.labelSmall,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
+                                        )
+                                        Text(
+                                            text = display(sol.answerText),
+                                            style = MaterialTheme.typography.titleLarge,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            color = MaterialTheme.colorScheme.onPrimaryContainer
+                                        )
+                                    }
+                                    Row(
+                                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
                                         Surface(
-                                            color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.85f),
-                                            shape = RoundedCornerShape(50),
-                                            modifier = Modifier.padding(top = 6.dp)
+                                            color = Color.White,
+                                            shape = CircleShape,
+                                            modifier = Modifier
+                                                .size(40.dp)
+                                                .clip(CircleShape)
+                                                .clickable {
+                                                    val ans = display(sol.answerText)
+                                                    clipboardManager.setText(AnnotatedString(ans))
+                                                    scope.launch {
+                                                        snackbarHostState.showSnackbar(
+                                                            if (isBn) "উত্তর কপি হয়েছে: $ans" else "Copied: $ans"
+                                                        )
+                                                    }
+                                                }
                                         ) {
-                                            Text(
-                                                text = "= ${display(livePreview)}",
-                                                style = MaterialTheme.typography.titleMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 4.dp)
-                                            )
+                                            Box(contentAlignment = Alignment.Center) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.ContentCopy,
+                                                    contentDescription = "Copy",
+                                                    tint = MaterialTheme.colorScheme.primary,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                            }
+                                        }
+                                        Surface(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            shape = RoundedCornerShape(50),
+                                            modifier = Modifier
+                                                .heightIn(min = 40.dp)
+                                                .clip(RoundedCornerShape(50))
+                                                .clickable { onOpenSolution(savedId) }
+                                                .testTag("calc_eye_solution_btn")
+                                        ) {
+                                            Row(
+                                                modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Filled.Visibility,
+                                                    contentDescription = strings.viewSolution,
+                                                    tint = Color.White,
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Text(
+                                                    text = if (isBn) "খাতা / PDF" else "Khata / PDF",
+                                                    style = MaterialTheme.typography.labelMedium,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = Color.White,
+                                                    maxLines = 1
+                                                )
+                                            }
                                         }
                                     }
                                 }
                             }
-                        }
 
-                        // Empty State & 1-Tap Quick Examples
-                        if (expression.isEmpty() && lastSolution == null) {
-                            Spacer(Modifier.height(2.dp))
+                            // Numbered Step-by-Step Explanation
                             Surface(
-                                color = Color.White.copy(alpha = 0.78f),
+                                color = Color.White.copy(alpha = 0.88f),
                                 shape = RoundedCornerShape(14.dp),
                                 border = BorderStroke(1.dp, ext.khataLine)
                             ) {
                                 Column(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .padding(12.dp),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        .padding(10.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    Row(
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        Icon(
-                                            imageVector = Icons.Filled.AutoAwesome,
-                                            contentDescription = null,
-                                            tint = MaterialTheme.colorScheme.primary,
-                                            modifier = Modifier.size(16.dp)
-                                        )
-                                        Text(
-                                            text = if (lang == AppLanguage.BANGLA) "দ্রুত উদাহরণে ট্যাপ করুন:" else "Try quick examples:",
-                                            style = MaterialTheme.typography.labelLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    LazyRow(
-                                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                    ) {
-                                        items(samplePresets) { sample ->
+                                    Text(
+                                        text = strings.stepByStepTitle,
+                                        style = MaterialTheme.typography.labelMedium,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary
+                                    )
+                                    sol.explanationSteps.forEachIndexed { idx, s ->
+                                        Row(
+                                            verticalAlignment = Alignment.Top,
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
                                             Surface(
-                                                color = ext.solverBlueContainer,
-                                                shape = RoundedCornerShape(50),
-                                                border = BorderStroke(1.dp, ext.solverBlueStart.copy(alpha = 0.25f)),
-                                                modifier = Modifier
-                                                    .clip(RoundedCornerShape(50))
-                                                    .clickable {
-                                                        expression = sample
-                                                        solveNow(sample)
-                                                    }
+                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                shape = CircleShape,
+                                                modifier = Modifier.size(20.dp)
                                             ) {
-                                                Text(
-                                                    text = sample,
-                                                    style = MaterialTheme.typography.labelMedium,
-                                                    color = ext.onSolverBlueContainer,
-                                                    fontWeight = FontWeight.SemiBold,
-                                                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 7.dp)
-                                                )
+                                                Box(contentAlignment = Alignment.Center) {
+                                                    Text(
+                                                        text = display("${idx + 1}"),
+                                                        fontSize = 11.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = MaterialTheme.colorScheme.onPrimaryContainer
+                                                    )
+                                                }
                                             }
+                                            Text(
+                                                text = display(s),
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = Color(0xFF22362B),
+                                                modifier = Modifier.weight(1f)
+                                            )
                                         }
                                     }
                                 }
                             }
                         }
-
-                        // Solved Khata Result Block
-                        val sol = lastSolution
-                        val savedId = lastSavedId
-                        AnimatedVisibility(
-                            visible = sol != null && savedId != null,
-                            enter = fadeIn() + expandVertically(),
-                            exit = fadeOut() + shrinkVertically()
+                    } else {
+                        // Clean Empty Khata Note (NO quick examples)
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(start = 36.dp, end = 16.dp),
+                            verticalArrangement = Arrangement.Center,
+                            horizontalAlignment = Alignment.CenterHorizontally
                         ) {
-                            if (sol != null && savedId != null) {
-                                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
-                                    HorizontalDivider(color = ext.khataLine)
-
-                                    // Notebook Work Box
-                                    Surface(
-                                        color = Color.White.copy(alpha = 0.94f),
-                                        shape = RoundedCornerShape(16.dp),
-                                        border = BorderStroke(1.dp, ext.khataLine),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Column(
-                                            modifier = Modifier.padding(12.dp),
-                                            verticalArrangement = Arrangement.spacedBy(3.dp)
-                                        ) {
-                                            Text(
-                                                text = if (lang == AppLanguage.BANGLA) "খাতার সমাধান:" else "Khata Work:",
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = ext.solverBlueStart
-                                            )
-                                            sol.khataLines.forEach { line ->
-                                                Text(
-                                                    text = display(line),
-                                                    fontFamily = JetBrainsMonoFontFamily,
-                                                    style = MaterialTheme.typography.titleMedium,
-                                                    fontWeight = FontWeight.Bold,
-                                                    color = Color(0xFF112419)
-                                                )
-                                            }
-                                        }
-                                    }
-
-                                    // Answer Highlight + Action Buttons (Copy & Eye View)
-                                    Surface(
-                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                        shape = RoundedCornerShape(14.dp),
-                                        border = BorderStroke(1.2.dp, MaterialTheme.colorScheme.primary),
-                                        modifier = Modifier.fillMaxWidth()
-                                    ) {
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                                            verticalAlignment = Alignment.CenterVertically,
-                                            horizontalArrangement = Arrangement.SpaceBetween
-                                        ) {
-                                            Column(modifier = Modifier.weight(1f)) {
-                                                Text(
-                                                    text = strings.finalAnswer,
-                                                    style = MaterialTheme.typography.labelSmall,
-                                                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f)
-                                                )
-                                                Text(
-                                                    text = display(sol.answerText),
-                                                    style = MaterialTheme.typography.titleLarge,
-                                                    fontWeight = FontWeight.ExtraBold,
-                                                    color = MaterialTheme.colorScheme.onPrimaryContainer
-                                                )
-                                            }
-                                            Row(
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                                verticalAlignment = Alignment.CenterVertically
-                                            ) {
-                                                Surface(
-                                                    color = Color.White,
-                                                    shape = CircleShape,
-                                                    modifier = Modifier
-                                                        .size(40.dp)
-                                                        .clip(CircleShape)
-                                                        .clickable {
-                                                            val ans = display(sol.answerText)
-                                                            clipboardManager.setText(AnnotatedString(ans))
-                                                            scope.launch {
-                                                                snackbarHostState.showSnackbar(
-                                                                    if (lang == AppLanguage.BANGLA) "উত্তর কপি হয়েছে: $ans" else "Copied: $ans"
-                                                                )
-                                                            }
-                                                        }
-                                                ) {
-                                                    Box(contentAlignment = Alignment.Center) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.ContentCopy,
-                                                            contentDescription = "Copy",
-                                                            tint = MaterialTheme.colorScheme.primary,
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                    }
-                                                }
-                                                Surface(
-                                                    color = MaterialTheme.colorScheme.primary,
-                                                    shape = RoundedCornerShape(50),
-                                                    modifier = Modifier
-                                                        .heightIn(min = 40.dp)
-                                                        .clip(RoundedCornerShape(50))
-                                                        .clickable { onOpenSolution(savedId) }
-                                                        .testTag("calc_eye_solution_btn")
-                                                ) {
-                                                    Row(
-                                                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
-                                                        verticalAlignment = Alignment.CenterVertically,
-                                                        horizontalArrangement = Arrangement.spacedBy(5.dp)
-                                                    ) {
-                                                        Icon(
-                                                            imageVector = Icons.Filled.Visibility,
-                                                            contentDescription = strings.viewSolution,
-                                                            tint = Color.White,
-                                                            modifier = Modifier.size(18.dp)
-                                                        )
-                                                        Text(
-                                                            text = if (lang == AppLanguage.BANGLA) "খাতা / PDF" else "Khata / PDF",
-                                                            style = MaterialTheme.typography.labelMedium,
-                                                            fontWeight = FontWeight.Bold,
-                                                            color = Color.White,
-                                                            maxLines = 1
-                                                        )
-                                                    }
-                                                }
-                                            }
-                                        }
-                                    }
-
-                                    // Step-by-step teacher explanation
-                                    Surface(
-                                        color = Color.White.copy(alpha = 0.85f),
-                                        shape = RoundedCornerShape(12.dp),
-                                        border = BorderStroke(1.dp, ext.khataLine)
-                                    ) {
-                                        Column(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .padding(10.dp),
-                                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                                        ) {
-                                            Text(
-                                                text = strings.stepByStepTitle,
-                                                style = MaterialTheme.typography.labelMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.primary
-                                            )
-                                            sol.explanationSteps.forEach { s ->
-                                                Text(
-                                                    text = "• ${display(s)}",
-                                                    style = MaterialTheme.typography.bodySmall,
-                                                    color = Color(0xFF283C30)
-                                                )
-                                            }
-                                        }
-                                    }
-                                }
-                            }
+                            Icon(
+                                imageVector = Icons.Filled.EditNote,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.45f),
+                                modifier = Modifier.size(34.dp)
+                            )
+                            Spacer(Modifier.height(6.dp))
+                            Text(
+                                text = if (isBn) {
+                                    "অংক লিখে '=' চাপুন — খাতার নিয়মে ধাপে ধাপে সমাধান দেখতে পাবেন"
+                                } else {
+                                    "Enter any math & press '=' for step-by-step Khata work"
+                                },
+                                style = MaterialTheme.typography.bodySmall,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                textAlign = TextAlign.Center
+                            )
                         }
                     }
                 }
             }
 
-            // Sculpted Keypad Deck
+            // 3. Professional 3-Tab Keypad Deck (1,2,3 / 4,5,6 / 7,8,9 / 0 Order!)
             if (!useKeyboardInput) {
                 Surface(
                     color = MaterialTheme.colorScheme.surface,
@@ -805,166 +829,346 @@ fun CalculatorSolverScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                            .padding(horizontal = 12.dp, vertical = 9.dp),
                         verticalArrangement = Arrangement.spacedBy(7.dp)
                     ) {
-                        // Smart Function & Command Ribbon
-                        LazyRow(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            verticalAlignment = Alignment.CenterVertically
+                        // 3-Mode Segmented Tab Selector
+                        Surface(
+                            color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.75f),
+                            shape = RoundedCornerShape(14.dp),
+                            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f))
                         ) {
-                            items(quickSymbols) { item ->
-                                val chipBg = if (item.isCommand) ext.goldContainer else ext.solverBlueContainer
-                                val chipFg = if (item.isCommand) ext.onGoldContainer else ext.onSolverBlueContainer
-                                val chipBorder = if (item.isCommand) ext.onGoldContainer.copy(alpha = 0.28f) else ext.solverBlueStart.copy(alpha = 0.25f)
-                                Surface(
-                                    color = chipBg,
-                                    shape = RoundedCornerShape(12.dp),
-                                    border = BorderStroke(1.dp, chipBorder),
-                                    modifier = Modifier
-                                        .height(38.dp)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                            if (item.replaceAll && expression.isBlank()) {
-                                                expression = item.insertText
-                                            } else if (item.replaceAll) {
-                                                expression = item.insertText + expression
-                                            } else {
-                                                expression += item.insertText
-                                            }
-                                        }
-                                        .testTag("calc_ext_${item.label}")
-                                ) {
-                                    Box(
-                                        contentAlignment = Alignment.Center,
-                                        modifier = Modifier.padding(horizontal = 12.dp)
-                                    ) {
-                                        Text(
-                                            text = item.label,
-                                            fontSize = 14.sp,
-                                            fontWeight = FontWeight.Bold,
-                                            color = chipFg,
-                                            maxLines = 1
-                                        )
-                                    }
-                                }
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(3.dp),
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                PadModeTab(
+                                    label = if (isBn) "ক্যালকুলেটর" else "Basic",
+                                    icon = Icons.Filled.Calculate,
+                                    selected = activePadTab == CalcPadTab.BASIC,
+                                    onClick = { activePadTab = CalcPadTab.BASIC },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                PadModeTab(
+                                    label = if (isBn) "বৈজ্ঞানিক" else "Scientific",
+                                    icon = Icons.Filled.Science,
+                                    selected = activePadTab == CalcPadTab.SCIENTIFIC,
+                                    onClick = { activePadTab = CalcPadTab.SCIENTIFIC },
+                                    modifier = Modifier.weight(1f)
+                                )
+                                PadModeTab(
+                                    label = if (isBn) "সূত্র (১-১০)" else "Formulas",
+                                    icon = Icons.Filled.Functions,
+                                    selected = activePadTab == CalcPadTab.FORMULAS,
+                                    onClick = { activePadTab = CalcPadTab.FORMULAS },
+                                    modifier = Modifier.weight(1f)
+                                )
                             }
                         }
 
-                        // Main Tactile 4-Column Keypad
-                        val keys = listOf(
-                            listOf("C", "(", ")", "÷"),
-                            listOf("7", "8", "9", "×"),
-                            listOf("4", "5", "6", "-"),
-                            listOf("1", "2", "3", "+"),
-                            listOf("0", ".", "⌫", "=")
-                        )
+                        when (activePadTab) {
+                            CalcPadTab.FORMULAS -> {
+                                CurriculumFormulaGrid(
+                                    language = lang,
+                                    onSelectFormula = { activeFormulaSheet = it }
+                                )
+                            }
 
-                        Column(verticalArrangement = Arrangement.spacedBy(7.dp)) {
-                            keys.forEach { row ->
-                                Row(
+                            CalcPadTab.BASIC -> {
+                                LazyRow(
                                     modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(7.dp)
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
                                 ) {
-                                    row.forEach { key ->
-                                        val isOperator = key in listOf("÷", "×", "-", "+", "(", ")")
-                                        val isEquals = key == "="
-                                        val isClear = key == "C"
-                                        val isBackspace = key == "⌫"
-                                        val label = if (key in "0".."9") display(key) else key
-
-                                        val bg = when {
-                                            isClear -> ext.failContainer
-                                            isBackspace -> ext.goldContainer
-                                            isOperator -> ext.solverBlueContainer
-                                            else -> MaterialTheme.colorScheme.background
-                                        }
-                                        val fg = when {
-                                            isEquals -> Color.White
-                                            isClear -> ext.failRed
-                                            isBackspace -> ext.onGoldContainer
-                                            isOperator -> ext.onSolverBlueContainer
-                                            else -> MaterialTheme.colorScheme.onSurface
-                                        }
-                                        val border = when {
-                                            isEquals -> ext.emeraldGradientStart
-                                            isClear -> ext.failRed.copy(alpha = 0.25f)
-                                            isBackspace -> ext.onGoldContainer.copy(alpha = 0.28f)
-                                            isOperator -> ext.solverBlueStart.copy(alpha = 0.25f)
-                                            else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.5f)
-                                        }
-
+                                    items(basicQuickRow) { item ->
                                         Surface(
-                                            color = if (isEquals) Color.Transparent else bg,
-                                            shape = RoundedCornerShape(15.dp),
-                                            shadowElevation = if (isEquals) 4.dp else 1.dp,
-                                            border = BorderStroke(1.dp, border),
+                                            color = ext.solverBlueContainer,
+                                            shape = RoundedCornerShape(10.dp),
+                                            border = BorderStroke(1.dp, ext.solverBlueStart.copy(alpha = 0.25f)),
                                             modifier = Modifier
-                                                .weight(1f)
-                                                .height(48.dp)
-                                                .minimumInteractiveComponentSize()
-                                                .clip(RoundedCornerShape(15.dp))
-                                                .then(
-                                                    if (isEquals) {
-                                                        Modifier.background(
-                                                            Brush.linearGradient(
-                                                                listOf(ext.emeraldGradientStart, ext.emeraldGradientEnd)
-                                                            )
-                                                        )
-                                                    } else {
-                                                        Modifier
-                                                    }
-                                                )
+                                                .height(35.dp)
+                                                .clip(RoundedCornerShape(10.dp))
                                                 .clickable {
-                                                    when {
-                                                        isClear -> {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                            expression = ""
-                                                            lastSolution = null
-                                                            lastSavedId = null
-                                                        }
-                                                        isBackspace -> {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                            if (expression.isNotEmpty()) {
-                                                                expression = expression.dropLast(1)
-                                                            }
-                                                        }
-                                                        isEquals -> solveNow()
-                                                        else -> {
-                                                            haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
-                                                            expression += label
-                                                        }
-                                                    }
+                                                    val isOp = item.insertText in listOf("/", "^", "%")
+                                                    appendKeypadToken(item.insertText, isOperator = isOp)
                                                 }
-                                                .testTag("calc_key_$key")
+                                                .testTag("calc_ext_${item.label}")
                                         ) {
-                                            Box(contentAlignment = Alignment.Center) {
-                                                if (isBackspace) {
-                                                    Icon(
-                                                        imageVector = Icons.AutoMirrored.Filled.Backspace,
-                                                        contentDescription = "Backspace",
-                                                        tint = fg,
-                                                        modifier = Modifier.size(20.dp)
-                                                    )
-                                                } else {
-                                                    Text(
-                                                        text = label,
-                                                        fontSize = if (isEquals) 24.sp else 20.sp,
-                                                        fontWeight = FontWeight.ExtraBold,
-                                                        color = fg
-                                                    )
+                                            Box(
+                                                contentAlignment = Alignment.Center,
+                                                modifier = Modifier.padding(horizontal = 12.dp)
+                                            ) {
+                                                Text(
+                                                    text = item.label,
+                                                    fontSize = 14.sp,
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = ext.onSolverBlueContainer,
+                                                    maxLines = 1
+                                                )
+                                            }
+                                        }
+                                    }
+                                }
+
+                                OrderedNumericPad(
+                                    keyHeight = 48.dp,
+                                    displayDigit = ::display,
+                                    onClear = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        expression = ""
+                                        lastSolution = null
+                                        lastSavedId = null
+                                        justSolved = false
+                                    },
+                                    onBackspace = { smartBackspace() },
+                                    onEquals = { solveNow() },
+                                    onKey = { token, isOp -> appendKeypadToken(token, isOp) }
+                                )
+                            }
+
+                            CalcPadTab.SCIENTIFIC -> {
+                                val sciRows = listOf(
+                                    listOf(
+                                        MathQuickAction("sin", "sin("),
+                                        MathQuickAction("cos", "cos("),
+                                        MathQuickAction("tan", "tan("),
+                                        MathQuickAction("log", "log("),
+                                        MathQuickAction("ln", "ln(")
+                                    ),
+                                    listOf(
+                                        MathQuickAction("√", "√("),
+                                        MathQuickAction("∛", "∛("),
+                                        MathQuickAction("x²", "²"),
+                                        MathQuickAction("x^y", "^"),
+                                        MathQuickAction("x!", "!")
+                                    ),
+                                    listOf(
+                                        MathQuickAction("π", "π"),
+                                        MathQuickAction("e", "e"),
+                                        MathQuickAction("x", "x"),
+                                        MathQuickAction("=", "="),
+                                        MathQuickAction("Ans", lastNumericAns?.let { display(it) } ?: display("0"))
+                                    )
+                                )
+                                Column(verticalArrangement = Arrangement.spacedBy(5.dp)) {
+                                    sciRows.forEach { row ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(5.dp)
+                                        ) {
+                                            row.forEach { item ->
+                                                Surface(
+                                                    color = ext.goldContainer.copy(alpha = 0.72f),
+                                                    shape = RoundedCornerShape(10.dp),
+                                                    border = BorderStroke(1.dp, ext.onGoldContainer.copy(alpha = 0.24f)),
+                                                    modifier = Modifier
+                                                        .weight(1f)
+                                                        .height(34.dp)
+                                                        .clip(RoundedCornerShape(10.dp))
+                                                        .clickable {
+                                                            val isOp = item.insertText in listOf("^", "²")
+                                                            appendKeypadToken(item.insertText, isOperator = isOp)
+                                                        }
+                                                ) {
+                                                    Box(contentAlignment = Alignment.Center) {
+                                                        Text(
+                                                            text = item.label,
+                                                            fontSize = 13.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = ext.onGoldContainer,
+                                                            maxLines = 1
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
                                     }
                                 }
+
+                                OrderedNumericPad(
+                                    keyHeight = 42.dp,
+                                    displayDigit = ::display,
+                                    onClear = {
+                                        haptic.performHapticFeedback(HapticFeedbackType.TextHandleMove)
+                                        expression = ""
+                                        lastSolution = null
+                                        lastSavedId = null
+                                        justSolved = false
+                                    },
+                                    onBackspace = { smartBackspace() },
+                                    onEquals = { solveNow() },
+                                    onKey = { token, isOp -> appendKeypadToken(token, isOp) }
+                                )
                             }
                         }
                     }
                 }
             }
+        }
+    }
+
+    val formula = activeFormulaSheet
+    if (formula != null) {
+        FormulaInputBottomSheet(
+            formula = formula,
+            language = lang,
+            useBanglaDigits = useBanglaDigits,
+            onDismiss = { activeFormulaSheet = null },
+            onSubmitExpression = { builtExpr ->
+                val formatted = display(builtExpr)
+                expression = formatted
+                solveNow(formatted)
+                activePadTab = CalcPadTab.BASIC
+            }
+        )
+    }
+}
+
+@Composable
+private fun OrderedNumericPad(
+    keyHeight: Dp,
+    displayDigit: (String) -> String,
+    onClear: () -> Unit,
+    onBackspace: () -> Unit,
+    onEquals: () -> Unit,
+    onKey: (token: String, isOperator: Boolean) -> Unit
+) {
+    val ext = LocalMsRsColors.current
+    // Ordered strictly 1,2,3 -> 4,5,6 -> 7,8,9 -> 0 (and ১,২,৩ -> ৪,৫,৬ -> ৭,৮,৯ -> ০)
+    val keys = listOf(
+        listOf("AC", "(", ")", "÷"),
+        listOf("1", "2", "3", "×"),
+        listOf("4", "5", "6", "-"),
+        listOf("7", "8", "9", "+"),
+        listOf("0", ".", "⌫", "=")
+    )
+
+    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        keys.forEach { row ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                row.forEach { key ->
+                    val isOperator = key in listOf("÷", "×", "-", "+", "(", ")")
+                    val isEquals = key == "="
+                    val isClear = key == "AC"
+                    val isBackspace = key == "⌫"
+                    val label = if (key in "0".."9") displayDigit(key) else key
+
+                    val bg = when {
+                        isClear -> ext.failContainer
+                        isBackspace -> ext.goldContainer
+                        isOperator -> ext.solverBlueContainer
+                        else -> MaterialTheme.colorScheme.background
+                    }
+                    val fg = when {
+                        isEquals -> Color.White
+                        isClear -> ext.failRed
+                        isBackspace -> ext.onGoldContainer
+                        isOperator -> ext.onSolverBlueContainer
+                        else -> MaterialTheme.colorScheme.onSurface
+                    }
+                    val border = when {
+                        isEquals -> ext.emeraldGradientStart
+                        isClear -> ext.failRed.copy(alpha = 0.28f)
+                        isBackspace -> ext.onGoldContainer.copy(alpha = 0.28f)
+                        isOperator -> ext.solverBlueStart.copy(alpha = 0.26f)
+                        else -> MaterialTheme.colorScheme.outline.copy(alpha = 0.45f)
+                    }
+
+                    Surface(
+                        color = if (isEquals) Color.Transparent else bg,
+                        shape = RoundedCornerShape(15.dp),
+                        shadowElevation = if (isEquals) 4.dp else 1.dp,
+                        border = BorderStroke(1.dp, border),
+                        modifier = Modifier
+                            .weight(1f)
+                            .height(keyHeight)
+                            .minimumInteractiveComponentSize()
+                            .clip(RoundedCornerShape(15.dp))
+                            .then(
+                                if (isEquals) {
+                                    Modifier.background(
+                                        Brush.linearGradient(
+                                            listOf(ext.emeraldGradientStart, ext.emeraldGradientEnd)
+                                        )
+                                    )
+                                } else {
+                                    Modifier
+                                }
+                            )
+                            .clickable {
+                                when {
+                                    isClear -> onClear()
+                                    isBackspace -> onBackspace()
+                                    isEquals -> onEquals()
+                                    else -> onKey(label, key in listOf("÷", "×", "-", "+"))
+                                }
+                            }
+                            .testTag("calc_key_${if (key == "AC") "C" else key}")
+                    ) {
+                        Box(contentAlignment = Alignment.Center) {
+                            if (isBackspace) {
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.Backspace,
+                                    contentDescription = "Backspace",
+                                    tint = fg,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            } else {
+                                Text(
+                                    text = label,
+                                    fontSize = if (isEquals) 24.sp else if (isClear) 15.sp else 21.sp,
+                                    fontWeight = FontWeight.ExtraBold,
+                                    color = fg
+                                )
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun PadModeTab(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        color = if (selected) MaterialTheme.colorScheme.primary else Color.Transparent,
+        shape = RoundedCornerShape(11.dp),
+        modifier = modifier
+            .height(36.dp)
+            .clip(RoundedCornerShape(11.dp))
+            .clickable(onClick = onClick)
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 6.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                tint = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.size(15.dp)
+            )
+            Spacer(Modifier.width(4.dp))
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelMedium,
+                fontWeight = FontWeight.Bold,
+                color = if (selected) Color.White else MaterialTheme.colorScheme.onSurfaceVariant,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
         }
     }
 }
@@ -989,7 +1193,7 @@ private fun DigitSegmentPill(
             fontWeight = FontWeight.Bold,
             color = if (selected) Color(0xFF0E7A3D) else Color.White,
             maxLines = 1,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+            modifier = Modifier.padding(horizontal = 9.dp, vertical = 5.dp)
         )
     }
 }
